@@ -1,6 +1,7 @@
 package applock.app.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import applock.app.AppLockApplication
@@ -8,9 +9,9 @@ import applock.app.domain.SessionRule
 import applock.app.ui.lock.LockActivity
 
 /**
- * Lightweight foreground-app detector.
+ * Foreground-app detector for AppLock.
  *
- * Security-sensitive decision making is delegated to LockEngine.
+ * Security decisions are delegated to LockEngine.
  *
  * This service:
  * - does not retrieve window content
@@ -18,27 +19,25 @@ import applock.app.ui.lock.LockActivity
  * - does not inspect passwords/messages
  * - does not poll
  * - does not perform network operations
- * - only reacts to package/window transition events
+ * - reacts only to package/window transition events
  */
 class AppDetectionAccessibilityService : AccessibilityService() {
 
     private val app: AppLockApplication
         get() = application as AppLockApplication
 
-    /*
-     * Last external package observed by the service.
+    /**
+     * Last external package observed.
      *
-     * IMPORTANT:
-     * We intentionally do not use this as a permanent "same package means
-     * ignore" gate. Android can omit/interleave accessibility events.
-     *
-     * The LockEngine performs the final decision.
+     * This is transition state only. It is NOT used to permanently suppress
+     * the same package because Android/OEM accessibility event ordering is
+     * not guaranteed.
      */
     private var lastExternalPackage: String? = null
 
-    /*
-     * Prevent duplicate LockActivity launches when Android emits multiple
-     * qualifying events in a very short period.
+    /**
+     * Prevent multiple LockActivity launches from a burst of accessibility
+     * events while the first lock screen is already being opened.
      */
     private var lockLaunchInProgress = false
 
@@ -58,29 +57,41 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             ?: return
 
         /*
-         * Never process our own UI as a protected application.
+         * Our own LockActivity/MainActivity must never be treated as a
+         * protected external application.
          *
-         * However, do treat it as a transition boundary so that the next
-         * protected-app event is not incorrectly suppressed by a stale
-         * lastPackage value.
+         * Seeing our own package is also a useful transition boundary.
          */
         if (pkg == packageName) {
             lastExternalPackage = null
+            lockLaunchInProgress = false
             return
         }
 
-        /*
-         * Any external package means the user is no longer exclusively inside
-         * the previously observed protected application.
-         */
         val previous = lastExternalPackage
 
+        /*
+         * If the foreground package changed, explicitly tell the engine
+         * that the PREVIOUS package is no longer the foreground package.
+         *
+         * IMPORTANT:
+         *
+         * The old implementation called:
+         *
+         *     onNonProtectedPackageVisible(pkg)
+         *
+         * before onPackageVisible(pkg).
+         *
+         * That was wrong because the engine then recorded the NEW package
+         * as already processed, causing onPackageVisible(pkg) to reject it.
+         *
+         * We now notify the engine about the PREVIOUS package instead.
+         */
         if (previous != null && previous != pkg) {
+
             /*
-             * AFTER_LEAVING sessions are explicitly invalidated when the user
-             * leaves the protected application.
-             *
-             * Only clear the previous package when it was actually protected.
+             * AFTER_LEAVING invalidates the previous protected application's
+             * unlock session as soon as another package becomes visible.
              */
             if (
                 app.repository.getSessionRule() == SessionRule.AFTER_LEAVING &&
@@ -90,52 +101,89 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             }
 
             /*
-             * This is also the signal that the user has left the previously
-             * authenticated application.
+             * Establish the previous package as the transition boundary.
+             * This MUST happen before processing the new package.
              */
-            app.lockEngine.onNonProtectedPackageVisible(pkg)
+            app.lockEngine.onNonProtectedPackageVisible(previous)
+
+            /*
+             * The new package is a fresh foreground candidate.
+             */
+            lockLaunchInProgress = false
         }
 
         /*
-         * Do not perform expensive package-manager or preference work before
-         * the engine has a chance to reject the event.
-         *
-         * The engine itself performs the authoritative protection check.
+         * Ask the engine to make the authoritative protection decision.
          */
         val shouldLock = app.lockEngine.onPackageVisible(pkg)
 
+        /*
+         * Update transition state only after the engine has evaluated the
+         * current package.
+         */
         lastExternalPackage = pkg
 
         if (!shouldLock) {
+            /*
+             * The engine rejected this event as either:
+             * - unprotected
+             * - already authenticated
+             * - duplicate accessibility event
+             * - timed session still valid
+             * - authentication temporarily blocked
+             *
+             * A later genuine transition must be allowed to launch normally.
+             */
             lockLaunchInProgress = false
             return
         }
 
         /*
-         * Accessibility can generate several qualifying events around an app
-         * transition. Do not launch multiple LockActivity instances.
+         * Do not launch multiple lock activities for the same accessibility
+         * transition burst.
          */
         if (lockLaunchInProgress) {
             return
         }
 
         lockLaunchInProgress = true
+
         app.lockEngine.markAuthUiShown()
 
-        startActivity(
-            Intent(this, LockActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
-                )
+        try {
+            startActivity(
+                Intent(this, LockActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                    )
 
-                putExtra(
-                    LockActivity.EXTRA_PACKAGE_NAME,
-                    pkg
-                )
-            }
-        )
+                    putExtra(
+                        LockActivity.EXTRA_PACKAGE_NAME,
+                        pkg
+                    )
+                }
+            )
+        } catch (_: ActivityNotFoundException) {
+            /*
+             * Fail closed if the lock activity cannot be resolved.
+             *
+             * Do not leave the service permanently stuck in a
+             * "launch in progress" state.
+             */
+            lockLaunchInProgress = false
+            app.lockEngine.reset()
+        } catch (_: SecurityException) {
+            /*
+             * OEM/system-level activity launch failure.
+             *
+             * Clear transient launch state so a later transition can
+             * attempt protection again.
+             */
+            lockLaunchInProgress = false
+            app.lockEngine.reset()
+        }
     }
 
     override fun onServiceConnected() {
@@ -144,7 +192,17 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         lastExternalPackage = null
         lockLaunchInProgress = false
 
-        app.lockEngine.reset()
+        /*
+         * A service recreation means its transition state is no longer
+         * trustworthy. Reset only the process-local transition state.
+         */
+        app.lockEngine.resetTransitionState()
+
+        /*
+         * Refresh diagnostics/UI state. The engine does not depend on the
+         * cached accessibility flag for an event that is already being
+         * delivered by this service.
+         */
         app.repository.refreshProtectionState()
     }
 
@@ -152,7 +210,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         lastExternalPackage = null
         lockLaunchInProgress = false
 
-        app.lockEngine.reset()
+        app.lockEngine.resetTransitionState()
         app.repository.refreshProtectionState()
     }
 }
