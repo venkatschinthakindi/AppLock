@@ -1,5 +1,6 @@
 R_DEF: Internal format may change without notice
 local
+drawable atoolix_logo
 drawable ic_app_lock
 string accessibility_service_description
 string accessibility_service_label

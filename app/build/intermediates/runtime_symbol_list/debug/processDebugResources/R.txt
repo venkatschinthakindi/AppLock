@@ -672,6 +672,7 @@ int drawable abc_vector_test 0x7f080055
 int drawable admob_close_button_black_circle_white_cross 0x7f080056
 int drawable admob_close_button_white_circle_black_cross 0x7f080057
 int drawable admob_close_button_white_cross 0x7f080058
+int drawable atoolix_logo 0x7f080090
 int drawable btn_checkbox_checked_mtrl 0x7f080059
 int drawable btn_checkbox_checked_to_unchecked_mtrl_animation 0x7f08005a
 int drawable btn_checkbox_unchecked_mtrl 0x7f08005b

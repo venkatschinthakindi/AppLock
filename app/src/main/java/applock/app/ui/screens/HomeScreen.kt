@@ -3,6 +3,7 @@ package applock.app.ui.screens
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,88 +37,228 @@ import applock.app.ui.components.PremiumCard
 import applock.app.ui.components.StatusPill
 
 @Composable
-fun HomeScreen(onSetupProtection: (() -> Unit)? = null) {
+fun HomeScreen(
+    onNavigate: ((String) -> Unit)? = null
+) {
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
+
     val protectedCount = app.repository.protectedPackages().size
     val service = app.repository.accessibilityEnabled()
     val hasAuth = app.repository.hasCredential()
+
     val status = when {
         !hasAuth -> "Not protected"
         !service -> "Limited protection"
         protectedCount == 0 -> "Ready to configure"
         else -> "Protection active"
     }
+
     val positive = service && hasAuth && protectedCount > 0
 
     Column(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                    )
+                )
+            )
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .82f))
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f)
+            )
         ) {
-            Column(Modifier.padding(22.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary)
+            Column(
+                modifier = Modifier.padding(22.dp)
+            ) {
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+
                     Spacer(Modifier.padding(6.dp))
-                    Text(status, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
+
                 Spacer(Modifier.height(8.dp))
+
                 Text(
-                    when {
-                        !hasAuth -> "Choose an authentication method before protecting apps."
-                        !service -> "Enable Accessibility access so AppLock can detect protected app launches."
-                        protectedCount == 0 -> "Select the apps you want AppLock to protect."
-                        else -> "$protectedCount apps are protected. Authentication stays local-first."
+                    text = when {
+                        !hasAuth ->
+                            "Choose an authentication method before protecting apps."
+
+                        !service ->
+                            "Enable Accessibility access so AppLock can detect protected app launches."
+
+                        protectedCount == 0 ->
+                            "Select the apps you want AppLock to protect."
+
+                        else ->
+                            "$protectedCount apps are protected. Authentication stays local-first."
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
                 Spacer(Modifier.height(14.dp))
-                StatusPill(if (positive) "All systems ready" else "Action recommended", positive)
+
+                StatusPill(
+                    if (positive) "All systems ready" else "Action recommended",
+                    positive
+                )
+
                 Spacer(Modifier.height(12.dp))
+
                 if (!hasAuth) {
                     Button(
-                        onClick = { onSetupProtection?.invoke() },
+                        onClick = {
+                            onNavigate?.invoke("security")
+                        },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Setup protection") }
+                    ) {
+                        Text("Setup protection")
+                    }
                 } else if (!service) {
                     Button(
-                        onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Enable protection") }
+                    ) {
+                        Text("Enable protection")
+                    }
                 }
             }
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PremiumCard(Modifier.weight(1f), "Protected apps", "$protectedCount selected", Icons.Default.Lock)
-            PremiumCard(Modifier.weight(1f), "Authentication", app.repository.getAuthMethod().name.lowercase().replaceFirstChar { it.uppercase() }, Icons.Default.Security)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PremiumCard(Modifier.weight(1f), "Protection Health", if (service) "Service available" else "Limited", Icons.Default.HealthAndSafety)
-            PremiumCard(Modifier.weight(1f), "Session rule", app.repository.getSessionRule().displayName(), Icons.Default.Settings)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            BoxClickableCard(
+                modifier = Modifier.weight(1f),
+                onClick = { onNavigate?.invoke("apps") }
+            ) {
+                PremiumCard(
+                    title = "Protected apps",
+                    subtitle = "$protectedCount selected",
+                    icon = Icons.Default.Lock
+                )
+            }
+
+            BoxClickableCard(
+                modifier = Modifier.weight(1f),
+                onClick = { onNavigate?.invoke("security") }
+            ) {
+                PremiumCard(
+                    title = "Authentication",
+                    subtitle = app.repository
+                        .getAuthMethod()
+                        .name
+                        .lowercase()
+                        .replaceFirstChar { it.uppercase() },
+                    icon = Icons.Default.Security
+                )
+            }
         }
 
-        PremiumCard(title = "Security first", subtitle = "The lock engine is independent of monetization") {
-            Text("Authentication does not wait for ads, network requests, billing, analytics, remote configuration or downloaded themes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            BoxClickableCard(
+                modifier = Modifier.weight(1f),
+                onClick = { onNavigate?.invoke("health") }
+            ) {
+                PremiumCard(
+                    title = "Protection Health",
+                    subtitle = if (service) "Service available" else "Limited",
+                    icon = Icons.Default.HealthAndSafety
+                )
+            }
+
+            BoxClickableCard(
+                modifier = Modifier.weight(1f),
+                onClick = { onNavigate?.invoke("smart") }
+            ) {
+                PremiumCard(
+                    title = "Session rule",
+                    subtitle = app.repository
+                        .getSessionRule()
+                        .displayName(),
+                    icon = Icons.Default.Settings
+                )
+            }
+        }
+
+        PremiumCard(
+            title = "Security first",
+            subtitle = "The lock engine is independent of monetization"
+        ) {
+            Text(
+                text = "Authentication does not wait for ads, network requests, billing, analytics, remote configuration or downloaded themes.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Review system access") }
+
+            OutlinedButton(
+                onClick = {
+                    context.startActivity(
+                        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    )
+                }
+            ) {
+                Text("Review system access")
+            }
         }
     }
 }
 
-private fun applock.app.domain.SessionRule.displayName(): String = when (this) {
-    applock.app.domain.SessionRule.IMMEDIATELY -> "Every launch"
-    applock.app.domain.SessionRule.AFTER_LEAVING -> "After leaving"
-    applock.app.domain.SessionRule.SCREEN_OFF -> "After screen off"
-    applock.app.domain.SessionRule.MINUTES_1 -> "1 minute"
-    applock.app.domain.SessionRule.MINUTES_5 -> "5 minutes"
-    applock.app.domain.SessionRule.MINUTES_15 -> "15 minutes"
-    applock.app.domain.SessionRule.MINUTES_30 -> "30 minutes"
+@Composable
+private fun BoxClickableCard(
+    modifier: Modifier,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clickable(onClick = onClick)
+    ) {
+        content()
+    }
 }
+
+private fun applock.app.domain.SessionRule.displayName(): String =
+    when (this) {
+        applock.app.domain.SessionRule.IMMEDIATELY -> "Every launch"
+        applock.app.domain.SessionRule.AFTER_LEAVING -> "After leaving"
+        applock.app.domain.SessionRule.SCREEN_OFF -> "After screen off"
+        applock.app.domain.SessionRule.MINUTES_1 -> "1 minute"
+        applock.app.domain.SessionRule.MINUTES_5 -> "5 minutes"
+        applock.app.domain.SessionRule.MINUTES_15 -> "15 minutes"
+        applock.app.domain.SessionRule.MINUTES_30 -> "30 minutes"
+    }
