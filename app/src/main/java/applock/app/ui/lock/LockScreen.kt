@@ -96,7 +96,10 @@ fun LockScreen(
     }
 
     fun success() {
-        app.lockEngine.unlock(packageName)
+        if (!app.lockEngine.unlock(packageName)) {
+            error = true
+            return
+        }
 
         scope.launch {
             alpha.animateTo(

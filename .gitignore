@@ -7,7 +7,7 @@
 # -------------------------
 .gradle/
 **/.gradle/
-app/build/
+app\build/
 build/
 **/build/
 

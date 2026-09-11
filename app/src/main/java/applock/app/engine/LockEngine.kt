@@ -31,6 +31,25 @@ class LockEngine(private val repository: AppLockRepository) {
     }
 
     fun markAuthUiShown() { _state.value = State.SHOWING_AUTH }
-    fun unlock(packageName: String) { repository.markUnlocked(packageName); _state.value = State.UNLOCKED }
+    fun unlock(packageName: String): Boolean {
+        if (packageName.isBlank()) {
+            _state.value = State.AUTHENTICATION_REQUIRED
+            return false
+        }
+
+        if (!repository.isProtected(packageName)) {
+            _state.value = State.AUTHENTICATION_REQUIRED
+            return false
+        }
+
+        if (!repository.authenticationConfigured()) {
+            _state.value = State.LIMITED_PROTECTION
+            return false
+        }
+
+        repository.markUnlocked(packageName)
+        _state.value = State.UNLOCKED
+        return true
+    }
     fun reset() { _state.value = State.IDLE; lastLaunchPackage = null }
 }

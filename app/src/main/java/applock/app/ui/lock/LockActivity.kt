@@ -96,16 +96,35 @@ class LockActivity : FragmentActivity() {
         val app = application as AppLockApplication
 
         /*
-         * Unlock only the exact package that was authenticated.
-         */
+        * Fail closed if protection was removed while the authentication
+        * screen was displayed.
+        */
+        if (
+            targetPackage.isBlank() ||
+            !app.repository.isProtected(targetPackage)
+        ) {
+            app.lockEngine.reset()
+            finishAndRemoveTask()
+            return
+        }
+
+        val launchIntent = packageManager
+            .getLaunchIntentForPackage(targetPackage)
+
+        if (launchIntent == null) {
+            app.lockEngine.reset()
+            finishAndRemoveTask()
+            return
+        }
+
+        /*
+        * Record the successful authentication only for the exact
+        * protected package that was authenticated.
+        */
         app.lockEngine.unlock(targetPackage)
 
-        val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
-
-        if (launchIntent != null) {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(launchIntent)
-        }
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
 
         finishAndRemoveTask()
     }
