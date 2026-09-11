@@ -42,17 +42,22 @@ class AppLockRepository(private val context: Context) {
     fun disclosureAccepted() = prefs.getBoolean("accessibility_disclosure_accepted", false)
     fun setDisclosureAccepted(v: Boolean) = prefs.edit().putBoolean("accessibility_disclosure_accepted", v).apply()
 
-    fun getAuthMethod() = runCatching { AuthMethod.valueOf(prefs.getString("auth_method", AuthMethod.BIOMETRIC.name)!!) }.getOrDefault(AuthMethod.BIOMETRIC)
+    fun getAuthMethod() = runCatching {
+        AuthMethod.valueOf(prefs.getString("auth_method", AuthMethod.PIN.name)!!)
+    }.getOrDefault(AuthMethod.PIN)
+
+    /** Changes to authentication configuration are performed only after the UI has authenticated the current credential. */
     fun setAuthMethod(v: AuthMethod) = prefs.edit().putString("auth_method", v.name).apply()
     fun getSessionRule() = runCatching { SessionRule.valueOf(prefs.getString("session_rule", SessionRule.IMMEDIATELY.name)!!) }.getOrDefault(SessionRule.IMMEDIATELY)
     fun setSessionRule(v: SessionRule) = prefs.edit().putString("session_rule", v.name).apply()
 
     fun setPin(pin: String) = secure.write("pin", pin)
-    fun verifyPin(pin: String) = secure.read("pin") == pin
+    fun verifyPin(pin: String) = pin.length in 4..8 && secure.read("pin") == pin
     fun hasPin() = secure.read("pin") != null
     fun setPattern(pattern: String) = secure.write("pattern", pattern)
     fun verifyPattern(pattern: String) = secure.read("pattern") == pattern
     fun hasPattern() = secure.read("pattern") != null
+    fun hasCredential() = hasPin() || hasPattern()
 
     fun protectedPackages(): Set<String> = prefs.getStringSet("protected_packages", emptySet())?.toSet() ?: emptySet()
     fun setProtected(packageName: String, enabled: Boolean) {

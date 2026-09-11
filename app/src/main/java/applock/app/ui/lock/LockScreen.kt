@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -105,9 +106,14 @@ fun LockScreen(packageName: String, onSuccess: () -> Unit) {
                     Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp))
                 }
                 Spacer(Modifier.height(18.dp))
-                Text("App Locked", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(label, style = MaterialTheme.typography.titleMedium)
-                Text("Unlock to continue", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Protected app", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("AppLock security check", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Spacer(Modifier.height(28.dp))
 
                 when {
@@ -125,7 +131,7 @@ fun LockScreen(packageName: String, onSuccess: () -> Unit) {
                         if (error) Text("Incorrect pattern", color = MaterialTheme.colorScheme.error)
                     }
                     else -> {
-                        Text(if (error) "Incorrect PIN" else "Enter your PIN", color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (error) "Incorrect PIN — try again" else "Enter your PIN", color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(14.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             repeat(8) { i -> Box(Modifier.size(12.dp).background(if (i < pin.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, CircleShape)) }

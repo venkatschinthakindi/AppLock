@@ -3,7 +3,6 @@ package applock.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,15 +14,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,17 +69,15 @@ fun CustomizationScreen() {
                     FilterChip(
                         selected = theme.mode == mode,
                         onClick = {
-                            app.repository.updateTheme { settings ->
-                                settings.copy(mode = mode)
+                            app.repository.updateTheme { current ->
+                                current.copy(mode = mode)
                             }
                         },
                         label = {
                             Text(
                                 mode.name
                                     .lowercase()
-                                    .replaceFirstChar { character ->
-                                        character.uppercase()
-                                    }
+                                    .replaceFirstChar { it.uppercase() }
                             )
                         }
                     )
@@ -103,14 +96,14 @@ fun CustomizationScreen() {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Box(
+                        androidx.compose.foundation.layout.Box(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(Color(value.toInt()))
                                 .clickable {
-                                    app.repository.updateTheme { settings ->
-                                        settings.copy(accent = value)
+                                    app.repository.updateTheme { current ->
+                                        current.copy(accent = value)
                                     }
                                 }
                         )
@@ -130,9 +123,11 @@ fun CustomizationScreen() {
         ) {
             Slider(
                 value = theme.cornerRadius,
-                onValueChange = { newRadius ->
-                    app.repository.updateTheme { settings ->
-                        settings.copy(cornerRadius = newRadius)
+                onValueChange = { sliderValue ->
+                    app.repository.updateTheme { current ->
+                        current.copy(
+                            cornerRadius = sliderValue
+                        )
                     }
                 },
                 valueRange = 10f..28f,
@@ -159,8 +154,10 @@ fun CustomizationScreen() {
                         selected = theme.animationStyle == style,
                         enabled = enabled,
                         onClick = {
-                            app.repository.updateTheme { settings ->
-                                settings.copy(animationStyle = style)
+                            app.repository.updateTheme { current ->
+                                current.copy(
+                                    animationStyle = style
+                                )
                             }
                         },
                         label = {
@@ -171,9 +168,7 @@ fun CustomizationScreen() {
                                     style.name
                                         .replace('_', ' ')
                                         .lowercase()
-                                        .replaceFirstChar { character ->
-                                            character.uppercase()
-                                        }
+                                        .replaceFirstChar { it.uppercase() }
                                 }
                             )
                         }
@@ -181,7 +176,9 @@ fun CustomizationScreen() {
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -203,8 +200,10 @@ fun CustomizationScreen() {
                 Switch(
                     checked = theme.reducedMotion,
                     onCheckedChange = { checked ->
-                        app.repository.updateTheme { settings ->
-                            settings.copy(reducedMotion = checked)
+                        app.repository.updateTheme { current ->
+                            current.copy(
+                                reducedMotion = checked
+                            )
                         }
                     }
                 )

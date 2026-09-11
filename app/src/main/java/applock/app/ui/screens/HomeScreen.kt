@@ -36,12 +36,12 @@ import applock.app.ui.components.PremiumCard
 import applock.app.ui.components.StatusPill
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onSetupProtection: (() -> Unit)? = null) {
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
     val protectedCount = app.repository.protectedPackages().size
     val service = app.repository.accessibilityEnabled()
-    val hasAuth = app.repository.hasPin() || app.repository.hasPattern() || app.repository.getAuthMethod() == applock.app.domain.AuthMethod.BIOMETRIC
+    val hasAuth = app.repository.hasCredential()
     val status = when {
         !hasAuth -> "Not protected"
         !service -> "Limited protection"
@@ -80,9 +80,17 @@ fun HomeScreen() {
                 )
                 Spacer(Modifier.height(14.dp))
                 StatusPill(if (positive) "All systems ready" else "Action recommended", positive)
-                if (!service) {
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Enable protection") }
+                Spacer(Modifier.height(12.dp))
+                if (!hasAuth) {
+                    Button(
+                        onClick = { onSetupProtection?.invoke() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Setup protection") }
+                } else if (!service) {
+                    Button(
+                        onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Enable protection") }
                 }
             }
         }

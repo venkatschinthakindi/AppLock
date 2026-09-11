@@ -1,138 +1,202 @@
 # ============================================================
-# AppLock - Android / Kotlin / Gradle
+# QR Barcode Studio - Android / Gradle
 # ============================================================
 
-# ---------- Gradle ----------
+# -------------------------
+# Gradle
+# -------------------------
 .gradle/
+**/.gradle/
 build/
 **/build/
-!gradle/wrapper/gradle-wrapper.jar
 
-# ---------- Android Studio / IntelliJ ----------
+# IMPORTANT:
+# Do NOT ignore gradle.properties.
+# It contains required project configuration such as
+# android.useAndroidX=true.
+
+# Keep Gradle wrapper JAR/scripts
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat
+
+
+# -------------------------
+# Android Studio / IntelliJ
+# -------------------------
 .idea/
 *.iml
 *.ipr
 *.iws
+
+# Android Studio user-specific files
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries/
 .idea/**/shelf/
 
-# Android Studio generated files
-captures/
+# Local Android Studio settings
+/local.properties
+
+
+# -------------------------
+# Android generated files
+# -------------------------
 .externalNativeBuild/
 .cxx/
+captures/
+.navigation/
 
-# ---------- Android ----------
-local.properties
+# Generated APK/AAB files
 *.apk
 *.aab
-*.apks
-*.aab.zip
+
+# Mapping / obfuscation outputs
+mapping/
+*.mapping
 *.idsig
 
-# Generated Android files
-gen/
-out/
+# Native build outputs
+*.so
 
-# ---------- Kotlin ----------
-.kotlin/
-*.kotlin_module
 
-# ---------- Java ----------
+# -------------------------
+# Signing / private keys
+# -------------------------
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+
+keystore/
+keystores/
+signing/
+credentials/
+
+
+# -------------------------
+# Secrets / credentials
+# -------------------------
+.env
+.env.*
+*.env
+
+credentials.json
+secrets.json
+service-account.json
+google-services.json
+
+# Private certificates
+*.crt
+
+
+# -------------------------
+# Kotlin
+# -------------------------
 *.class
+*.kotlin_module
+.kotlin/
 
-# ---------- Native / CMake ----------
-.cxx/
-.externalNativeBuild/
-obj/
 
-# ---------- Build / packaging ----------
-*.log
+# -------------------------
+# Java
+# -------------------------
+hs_err_pid*
+replay_pid*
+
+
+# -------------------------
+# OS files
+# -------------------------
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+$RECYCLE.BIN/
+*.stackdump
+
+
+# -------------------------
+# Temporary / editor files
+# -------------------------
 *.tmp
 *.temp
 *.bak
 *.swp
 *.swo
-
-# ---------- Signing / keystores ----------
-# Never commit private signing credentials.
-*.jks
-*.keystore
-*.p12
-*.pfx
-
-# Keep only templates/examples if intentionally committed.
-# Example:
-# !config/release-signing.properties.example
-
-# ---------- Secrets / local configuration ----------
-# Local secrets
-secrets.properties
-local.properties
-.env
-.env.*
-!.env.example
-
-# Firebase / Google service configuration
-# Uncomment if these files contain project-specific secrets
-# google-services.json
-
-# Play Console / service-account credentials
-service-account*.json
-*-service-account*.json
-play-service-account*.json
-
-# ---------- Firebase / Crash reporting ----------
-firebase-debug.log
-firebase-debug.*.log
-
-# ---------- Android Studio caches ----------
-.idea/caches/
-.idea/libraries/
-.idea/modules.xml
-.idea/misc.xml
-.idea/compiler.xml
-.idea/jarRepositories.xml
-.idea/navEditor.xml
-.idea/assetWizardSettings.xml
-
-# ---------- OS files ----------
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# ---------- Windows ----------
-$RECYCLE.BIN/
-*.stackdump
-
-# ---------- macOS ----------
-.AppleDouble
-.LSOverride
-._*
-
-# ---------- Linux ----------
 *~
-.directory
+*.orig
 
-# ---------- Temporary archives ----------
-*.zip
-*.tar
-*.tar.gz
-*.7z
-*.rar
+.vscode/
 
-# ---------- Generated documentation / reports ----------
-/reports/
-/outputs/
-/screenshots/
-/test-results/
 
-# ---------- Benchmark / profiling ----------
-*.hprof
-*.prof
+# -------------------------
+# Logs
+# -------------------------
+*.log
+logs/
 
-# ---------- Compose ----------
-# Preview/build-generated artifacts
-.compose/
+
+# -------------------------
+# Android lint / test reports
+# -------------------------
+lint-results*.html
+lint-results*.xml
+test-results/
+reports/
+
+
+# -------------------------
+# Firebase / Google generated
+# -------------------------
+.firebase/
+.firebaserc
+
+
+# -------------------------
+# Fastlane generated
+# -------------------------
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+
+# -------------------------
+# Coverage
+# -------------------------
+coverage/
+jacoco/
+
+
+# -------------------------
+# Temporary release artifacts
+# -------------------------
+release/
+artifacts/
+dist/
+
+
+# ============================================================
+# IMPORTANT - KEEP TRACKED
+# ============================================================
+#
+# gradle.properties
+# .github/workflows/*.yml
+# gradlew
+# gradlew.bat
+# gradle/wrapper/*
+# app/src/*
+# app/build.gradle.kts
+# build.gradle.kts
+# settings.gradle.kts
+#
+# Signing secrets belong in GitHub Actions Secrets,
+# NOT in the repository.
+# ============================================================
