@@ -54,7 +54,25 @@ class AppLockRepository(private val context: Context) {
 
     /** Changes to authentication configuration are performed only after the UI has authenticated the current credential. */
     fun setAuthMethod(v: AuthMethod) {
-        prefs.edit().putString("auth_method", v.name).apply()
+        when (v) {
+            AuthMethod.PIN -> {
+                secure.remove("pattern")
+            }
+
+            AuthMethod.PATTERN -> {
+                secure.remove("pin")
+            }
+
+            AuthMethod.BIOMETRIC -> {
+                // Biometric uses the PIN as its fallback credential.
+                secure.remove("pattern")
+            }
+        }
+
+        prefs.edit()
+            .putString("auth_method", v.name)
+            .apply()
+
         refreshProtectionState()
     }
     fun getSessionRule() = runCatching { SessionRule.valueOf(prefs.getString("session_rule", SessionRule.IMMEDIATELY.name)!!) }.getOrDefault(SessionRule.IMMEDIATELY)
