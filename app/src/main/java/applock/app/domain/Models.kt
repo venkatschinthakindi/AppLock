@@ -9,7 +9,8 @@ enum class ProtectionReason {
     PROTECTED,
     NO_PROTECTED_APPS,
     ACCESSIBILITY_DISABLED,
-    SECURITY_SETUP_REQUIRED
+    SECURITY_SETUP_REQUIRED,
+    SECURE_STORAGE_ERROR
 }
 
 data class ProtectionSnapshot(
@@ -18,8 +19,10 @@ data class ProtectionSnapshot(
     val accessibilityEnabled: Boolean,
     val credentialConfigured: Boolean,
     val protectedAppCount: Int,
-    val forceStopRecoveryPending: Boolean
+    val forceStopRecoveryPending: Boolean,
+    val secureStorageHealthy: Boolean = true
 )
+
 enum class AnimationStyle { COSMIC_ORB, LIQUID_FLOW, CRYSTAL_UNLOCK }
 
 data class ThemeSettings(

@@ -13,20 +13,26 @@ import kotlinx.coroutines.flow.asStateFlow
 class AppLockRepository(private val context: Context) {
     private val prefs = context.getSharedPreferences("app_lock_settings", Context.MODE_PRIVATE)
     private val secure = SecureStorage(context)
+
     private val _theme = MutableStateFlow(loadTheme())
     val theme: StateFlow<ThemeSettings> = _theme.asStateFlow()
 
     private var forceStopRecoveryThisProcess = false
-
     private val _protectionSnapshot = MutableStateFlow(computeProtectionSnapshot())
     val protectionSnapshot: StateFlow<ProtectionSnapshot> = _protectionSnapshot.asStateFlow()
 
     private fun loadTheme() = ThemeSettings(
-        mode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", ThemeMode.SYSTEM.name)!!) }.getOrDefault(ThemeMode.SYSTEM),
+        mode = runCatching {
+            ThemeMode.valueOf(prefs.getString("theme_mode", ThemeMode.SYSTEM.name)!!)
+        }.getOrDefault(ThemeMode.SYSTEM),
         accent = prefs.getLong("accent", 0xFF6C63FF),
         cornerRadius = prefs.getFloat("corner_radius", 20f),
         animationScale = prefs.getFloat("animation_scale", 1f),
-        animationStyle = runCatching { AnimationStyle.valueOf(prefs.getString("animation_style", AnimationStyle.COSMIC_ORB.name)!!) }.getOrDefault(AnimationStyle.COSMIC_ORB),
+        animationStyle = runCatching {
+            AnimationStyle.valueOf(
+                prefs.getString("animation_style", AnimationStyle.COSMIC_ORB.name)!!
+            )
+        }.getOrDefault(AnimationStyle.COSMIC_ORB),
         reducedMotion = prefs.getBoolean("reduced_motion", false)
     )
 
@@ -35,12 +41,15 @@ class AppLockRepository(private val context: Context) {
         prefs.edit()
             .putString("theme_mode", next.mode.name)
             .putLong("accent", next.accent)
-            .putFloat("corner_radius", next.cornerRadius)
-            .putFloat("animation_scale", next.animationScale)
+            .putFloat("corner_radius", next.cornerRadius.coerceIn(10f, 32f))
+            .putFloat("animation_scale", next.animationScale.coerceIn(0f, 1f))
             .putString("animation_style", next.animationStyle.name)
             .putBoolean("reduced_motion", next.reducedMotion)
             .apply()
-        _theme.value = next
+        _theme.value = next.copy(
+            cornerRadius = next.cornerRadius.coerceIn(10f, 32f),
+            animationScale = next.animationScale.coerceIn(0f, 1f)
+        )
     }
 
     fun isOnboardingComplete() = prefs.getBoolean("onboarding_complete", false)
@@ -52,103 +61,106 @@ class AppLockRepository(private val context: Context) {
         AuthMethod.valueOf(prefs.getString("auth_method", AuthMethod.PIN.name)!!)
     }.getOrDefault(AuthMethod.PIN)
 
-    /** Changes to authentication configuration are performed only after the UI has authenticated the current credential. */
+    /** Authentication configuration changes must be authorized by the current credential in UI/engine. */
     fun setAuthMethod(v: AuthMethod) {
         when (v) {
-            AuthMethod.PIN -> {
-                secure.remove("pattern")
-            }
-
-            AuthMethod.PATTERN -> {
-                secure.remove("pin")
-            }
-
-            AuthMethod.BIOMETRIC -> {
-                // Biometric uses the PIN as its fallback credential.
-                secure.remove("pattern")
-            }
+            AuthMethod.PIN -> secure.remove("pattern")
+            AuthMethod.PATTERN -> secure.remove("pin")
+            AuthMethod.BIOMETRIC -> secure.remove("pattern")
         }
-
-        prefs.edit()
-            .putString("auth_method", v.name)
-            .apply()
-
+        prefs.edit().putString("auth_method", v.name).apply()
         refreshProtectionState()
     }
-    fun getSessionRule() = runCatching { SessionRule.valueOf(prefs.getString("session_rule", SessionRule.IMMEDIATELY.name)!!) }.getOrDefault(SessionRule.IMMEDIATELY)
+
+    fun getSessionRule() = runCatching {
+        SessionRule.valueOf(
+            prefs.getString("session_rule", SessionRule.IMMEDIATELY.name)!!
+        )
+    }.getOrDefault(SessionRule.IMMEDIATELY)
+
     fun setSessionRule(v: SessionRule) {
         prefs.edit().putString("session_rule", v.name).apply()
         refreshProtectionState()
     }
 
     fun setPin(pin: String) {
+        require(pin.length in 4..8 && pin.all(Char::isDigit)) { "PIN must contain 4-8 digits" }
         secure.write("pin", pin)
         refreshProtectionState()
     }
-    fun verifyPin(pin: String) = pin.length in 4..8 && secure.read("pin") == pin
-    fun hasPin() = secure.read("pin") != null
+
+    fun verifyPin(pin: String): Boolean = runCatching {
+        pin.length in 4..8 && pin.all(Char::isDigit) && secure.read("pin") == pin
+    }.getOrDefault(false)
+
+    fun hasPin(): Boolean = runCatching { secure.read("pin") != null }.getOrDefault(false)
+
     fun setPattern(pattern: String) {
+        require(pattern.isNotBlank()) { "Pattern must not be blank" }
         secure.write("pattern", pattern)
         refreshProtectionState()
     }
-    fun verifyPattern(pattern: String) = secure.read("pattern") == pattern
-    fun hasPattern() = secure.read("pattern") != null
+
+    fun verifyPattern(pattern: String): Boolean = runCatching {
+        pattern.isNotBlank() && secure.read("pattern") == pattern
+    }.getOrDefault(false)
+
+    fun hasPattern(): Boolean = runCatching { secure.read("pattern") != null }.getOrDefault(false)
+
     fun hasCredential(): Boolean = authenticationConfigured()
 
     fun authenticationConfigured(): Boolean = when (getAuthMethod()) {
         AuthMethod.PIN -> hasPin()
         AuthMethod.PATTERN -> hasPattern()
+        // Biometric mode always has a PIN recovery credential.
         AuthMethod.BIOMETRIC -> hasPin()
     }
 
-    fun protectedPackages(): Set<String> = prefs.getStringSet("protected_packages", emptySet())?.toSet() ?: emptySet()
+    /** True only when the secure store itself is readable enough to make a security decision. */
+    fun secureStorageHealthy(): Boolean {
+        return runCatching {
+            val method = getAuthMethod()
+            when (method) {
+                AuthMethod.PIN, AuthMethod.BIOMETRIC -> {
+                    val value = secure.read("pin")
+                    value == null || (value.length in 4..8 && value.all(Char::isDigit))
+                }
+                AuthMethod.PATTERN -> {
+                    val value = secure.read("pattern")
+                    value == null || value.isNotBlank()
+                }
+            }
+        }.getOrDefault(false)
+    }
+
+    fun protectedPackages(): Set<String> =
+        prefs.getStringSet("protected_packages", emptySet())?.toSet() ?: emptySet()
+
     fun setProtected(packageName: String, enabled: Boolean) {
-        if (packageName.isBlank() || packageName == context.packageName) {
-            return
-        }
-
+        if (packageName.isBlank() || packageName == context.packageName) return
         val set = protectedPackages().toMutableSet()
-
-        if (enabled) {
-            set.add(packageName)
-        } else {
-            set.remove(packageName)
-        }
-
-        prefs.edit()
-            .putStringSet("protected_packages", set)
-            .apply()
-
+        if (enabled) set.add(packageName) else set.remove(packageName)
+        prefs.edit().putStringSet("protected_packages", set).apply()
         refreshProtectionState()
     }
+
     fun isProtected(packageName: String) = protectedPackages().contains(packageName)
 
     fun markUnlocked(packageName: String): Boolean {
-        if (packageName.isBlank() || !isProtected(packageName)) {
-            return false
-        }
-
+        if (packageName.isBlank() || !isProtected(packageName)) return false
         prefs.edit()
             .putLong("unlock_$packageName", System.currentTimeMillis())
             .apply()
-
         return true
     }
+
     fun clearUnlock(packageName: String) {
-        if (packageName.isBlank()) {
-            return
-        }
-
-        prefs.edit()
-            .remove("unlock_$packageName")
-            .apply()
+        if (packageName.isBlank()) return
+        prefs.edit().remove("unlock_$packageName").apply()
     }
 
-    /** Unlock sessions never survive a device reboot. */
-    /** A process restart must not turn a previous in-memory authentication into a new session. */
-    fun clearAllUnlocksIfNeededForColdStart() {
-        clearAllUnlocks()
-    }
+    /** Unlock sessions never survive a device/process restart. */
+    fun clearAllUnlocksIfNeededForColdStart() = clearAllUnlocks()
 
     fun clearAllUnlocks() {
         val editor = prefs.edit()
@@ -158,32 +170,23 @@ class AppLockRepository(private val context: Context) {
 
     fun recentlyUnlockedAt(packageName: String) = prefs.getLong("unlock_$packageName", 0L)
 
-    fun shouldRequireAuth(packageName: String, now: Long = System.currentTimeMillis()): Boolean {
+    fun shouldRequireAuth(
+        packageName: String,
+        now: Long = System.currentTimeMillis()
+    ): Boolean {
         if (!isProtected(packageName)) return false
-
         val last = recentlyUnlockedAt(packageName)
-
         if (last == 0L) return true
-
-        // Fail closed if the system clock moved backwards.
         if (now < last) return true
 
         return when (getSessionRule()) {
             SessionRule.IMMEDIATELY,
             SessionRule.AFTER_LEAVING,
             SessionRule.SCREEN_OFF -> true
-
-            SessionRule.MINUTES_1 ->
-                now - last >= 60_000L
-
-            SessionRule.MINUTES_5 ->
-                now - last >= 300_000L
-
-            SessionRule.MINUTES_15 ->
-                now - last >= 900_000L
-
-            SessionRule.MINUTES_30 ->
-                now - last >= 1_800_000L
+            SessionRule.MINUTES_1 -> now - last >= 60_000L
+            SessionRule.MINUTES_5 -> now - last >= 300_000L
+            SessionRule.MINUTES_15 -> now - last >= 900_000L
+            SessionRule.MINUTES_30 -> now - last >= 1_800_000L
         }
     }
 
@@ -195,15 +198,19 @@ class AppLockRepository(private val context: Context) {
             .map { it.activityInfo.packageName }
             .distinct()
             .filter { it != context.packageName }
-            .map { pkg -> ProtectedApp(pkg, runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg), isProtected(pkg)) }
+            .map { pkg ->
+                ProtectedApp(
+                    packageName = pkg,
+                    label = runCatching {
+                        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                    }.getOrDefault(pkg),
+                    protected = isProtected(pkg)
+                )
+            }
             .sortedBy { it.label.lowercase() }
             .toList()
     }
 
-    /**
-     * Reads Android's actual enabled accessibility-service registry. It does not rely on
-     * a local preference because the user can change the service state in Android Settings.
-     */
     fun accessibilityEnabled(): Boolean {
         val manager = context.getSystemService(AccessibilityManager::class.java) ?: return false
         return runCatching {
@@ -224,7 +231,6 @@ class AppLockRepository(private val context: Context) {
 
     fun forceStopRecoveryPending(): Boolean = forceStopRecoveryThisProcess
 
-    /** Recalculate protection from live Android state and local security configuration. */
     fun refreshProtectionState(): ProtectionSnapshot {
         val snapshot = computeProtectionSnapshot()
         _protectionSnapshot.value = snapshot
@@ -232,31 +238,33 @@ class AppLockRepository(private val context: Context) {
     }
 
     private fun computeProtectionSnapshot(): ProtectionSnapshot {
-        val credential = authenticationConfigured()
+        val storageHealthy = secureStorageHealthy()
+        val credential = storageHealthy && authenticationConfigured()
         val protectedCount = protectedPackages().size
         val accessibility = accessibilityEnabled()
 
         val state = when {
+            !storageHealthy -> HealthState.RED
             !credential -> HealthState.RED
             protectedCount == 0 -> HealthState.YELLOW
             !accessibility -> HealthState.RED
             else -> HealthState.GREEN
         }
-
         val reason = when {
+            !storageHealthy -> ProtectionReason.SECURE_STORAGE_ERROR
             !credential -> ProtectionReason.SECURITY_SETUP_REQUIRED
             protectedCount == 0 -> ProtectionReason.NO_PROTECTED_APPS
             !accessibility -> ProtectionReason.ACCESSIBILITY_DISABLED
             else -> ProtectionReason.PROTECTED
         }
-
         return ProtectionSnapshot(
             state = state,
             reason = reason,
             accessibilityEnabled = accessibility,
             credentialConfigured = credential,
             protectedAppCount = protectedCount,
-            forceStopRecoveryPending = forceStopRecoveryPending()
+            forceStopRecoveryPending = forceStopRecoveryPending(),
+            secureStorageHealthy = storageHealthy
         )
     }
 }

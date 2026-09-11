@@ -2,8 +2,6 @@ package applock.app.ui.lock
 
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,10 +17,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +33,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +45,8 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
 import applock.app.domain.AuthMethod
-import kotlinx.coroutines.launch
+import applock.app.engine.LockEngine
+import kotlinx.coroutines.delay
 
 @Composable
 fun LockScreen(
@@ -58,82 +56,81 @@ fun LockScreen(
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
     val repo = app.repository
-
     val theme by repo.theme.collectAsState()
+    val engineState by app.lockEngine.state.collectAsState()
 
     var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
     var forcePin by remember { mutableStateOf(false) }
-
-    val alpha = remember {
-        Animatable(
-            if (theme.reducedMotion) 1f else 0f
-        )
-    }
-
-    val scope = rememberCoroutineScope()
+    var lockoutRemaining by remember { mutableStateOf(0) }
 
     val label = remember(packageName) {
         runCatching {
-            context.packageManager
-                .getApplicationLabel(
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        0
-                    )
-                )
-                .toString()
+            context.packageManager.getApplicationLabel(
+                context.packageManager.getApplicationInfo(packageName, 0)
+            ).toString()
         }.getOrDefault("Protected app")
     }
 
-    LaunchedEffect(theme.reducedMotion) {
-        if (!theme.reducedMotion) {
-            alpha.animateTo(
-                1f,
-                tween(140)
-            )
+    LaunchedEffect(engineState) {
+        while (app.lockEngine.isBlocked()) {
+            lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
+            delay(1_000L)
+        }
+        lockoutRemaining = 0
+        if (engineState == LockEngine.State.TEMPORARILY_BLOCKED) {
+            error = ""
         }
     }
 
-    fun success() {
-        if (!app.lockEngine.unlock(packageName)) {
-            error = true
+    fun showResult(result: LockEngine.AuthenticationResult) {
+        when (result) {
+            LockEngine.AuthenticationResult.SUCCESS -> {
+                error = ""
+                pin = ""
+                onSuccess()
+            }
+            LockEngine.AuthenticationResult.BLOCKED -> {
+                lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
+                error = "Too many failed attempts"
+            }
+            LockEngine.AuthenticationResult.INVALID_CREDENTIAL -> {
+                pin = ""
+                error = "Incorrect credential"
+            }
+            LockEngine.AuthenticationResult.NOT_PROTECTED,
+            LockEngine.AuthenticationResult.NOT_CONFIGURED,
+            LockEngine.AuthenticationResult.LIMITED_PROTECTION -> {
+                error = "Protection is not currently available"
+            }
+        }
+    }
+
+    fun authenticatePin() {
+        if (app.lockEngine.isBlocked()) {
+            lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
             return
         }
-
-        scope.launch {
-            alpha.animateTo(
-                1f,
-                tween(60)
-            )
-
-            onSuccess()
-        }
+        showResult(app.lockEngine.authenticatePin(packageName, pin))
     }
 
-    fun verifyPin() {
-        if (pin.length !in 4..8) {
-            error = true
+    fun authenticatePattern(value: String) {
+        if (app.lockEngine.isBlocked()) {
+            lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
             return
         }
-
-        if (repo.verifyPin(pin)) {
-            error = false
-            success()
-        } else {
-            error = true
-            pin = ""
-        }
+        showResult(app.lockEngine.authenticatePattern(packageName, value))
     }
 
-    fun biometric() {
-        val activity = context as? FragmentActivity ?: return
-
-        val ready =
-            BiometricManager.from(context).canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK
-            ) == BiometricManager.BIOMETRIC_SUCCESS
+    fun authenticateBiometric() {
+        val activity = context as? FragmentActivity ?: run {
+            forcePin = true
+            return
+        }
+        val ready = BiometricManager.from(context).canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.BIOMETRIC_WEAK
+        ) == BiometricManager.BIOMETRIC_SUCCESS
 
         if (!ready) {
             forcePin = true
@@ -141,16 +138,20 @@ fun LockScreen(
         }
 
         val executor = ContextCompat.getMainExecutor(context)
-
         val prompt = BiometricPrompt(
             activity,
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
-
                 override fun onAuthenticationSucceeded(
                     result: BiometricPrompt.AuthenticationResult
                 ) {
-                    success()
+                    showResult(app.lockEngine.completeBiometricAuthentication(packageName))
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    if (errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                        error = errString.toString()
+                    }
                 }
             }
         )
@@ -166,22 +167,18 @@ fun LockScreen(
     }
 
     val method = repo.getAuthMethod()
-
-    val showBiometric =
-        method == AuthMethod.BIOMETRIC && !forcePin
-
-    val showPattern =
-        method == AuthMethod.PATTERN && !forcePin
+    val showBiometric = method == AuthMethod.BIOMETRIC && !forcePin
+    val showPattern = method == AuthMethod.PATTERN && !forcePin
+    val blocked = app.lockEngine.isBlocked()
 
     Surface(
         modifier = Modifier
             .fillMaxSize()
-            .alpha(alpha.value),
+            .alpha(if (theme.reducedMotion) 1f else 1f),
         color = MaterialTheme.colorScheme.background
     ) {
-
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
@@ -192,29 +189,24 @@ fun LockScreen(
                     )
                 )
         ) {
-
             Column(
-                modifier = Modifier
+                Modifier
                     .fillMaxSize()
-                    .padding(
-                        horizontal = 28.dp,
-                        vertical = 32.dp
-                    ),
+                    .padding(horizontal = 28.dp, vertical = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-
                 Box(
-                    modifier = Modifier
+                    Modifier
                         .size(92.dp)
                         .background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = .13f),
                             CircleShape
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
+                        Icons.Default.Lock,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(44.dp)
@@ -222,255 +214,149 @@ fun LockScreen(
                 }
 
                 Spacer(Modifier.height(18.dp))
-
                 Text(
-                    text = "Protected app",
+                    "Protected app",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
-
-                Spacer(Modifier.height(2.dp))
-
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                Spacer(Modifier.height(5.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Shield,
+                        Icons.Default.Shield,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
-
                     Spacer(Modifier.size(6.dp))
-
-                    Text(
-                        text = "AppLock security check",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("AppLock security check", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 Spacer(Modifier.height(28.dp))
 
                 when {
+                    blocked -> {
+                        Text(
+                            if (lockoutRemaining > 0) {
+                                "Too many attempts. Try again in ${lockoutRemaining}s."
+                            } else {
+                                "Temporarily locked. Try again shortly."
+                            },
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
 
                     showBiometric -> {
-
                         Button(
-                            onClick = {
-                                biometric()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = RoundedCornerShape(18.dp)
+                            onClick = { authenticateBiometric() },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(theme.cornerRadius.dp)
                         ) {
-
-                            Icon(
-                                imageVector = Icons.Default.Fingerprint,
-                                contentDescription = null
-                            )
-
+                            Icon(Icons.Default.Fingerprint, contentDescription = null)
                             Spacer(Modifier.size(10.dp))
-
                             Text("Unlock with biometric")
                         }
-
-                        Spacer(Modifier.height(10.dp))
-
+                        Spacer(Modifier.height(8.dp))
                         if (repo.hasPin()) {
-                            TextButton(
-                                onClick = {
-                                    forcePin = true
-                                    error = false
-                                }
-                            ) {
+                            TextButton(onClick = { forcePin = true; error = "" }) {
                                 Text("Use PIN instead")
                             }
                         }
                     }
 
                     showPattern -> {
-
                         Text(
-                            text = "Draw your pattern",
+                            "Draw your pattern",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
                         Spacer(Modifier.height(16.dp))
-
-                        PatternGrid(
-                            onComplete = { value ->
-                                if (repo.verifyPattern(value)) {
-                                    error = false
-                                    success()
-                                } else {
-                                    error = true
-                                }
-                            }
-                        )
-
-                        if (error) {
-                            Spacer(Modifier.height(8.dp))
-
-                            Text(
-                                text = "Incorrect pattern",
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+                        PatternGrid(onComplete = ::authenticatePattern)
                     }
 
                     else -> {
-
                         Text(
-                            text = if (error) {
-                                "Incorrect PIN — try again"
-                            } else {
-                                "Enter your PIN"
-                            },
-                            color = if (error) {
-                                MaterialTheme.colorScheme.error
-                            } else {
+                            if (error.isEmpty()) "Enter your PIN" else error,
+                            color = if (error.isEmpty()) {
                                 MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.error
                             }
                         )
-
                         Spacer(Modifier.height(14.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             repeat(8) { index ->
-
                                 Box(
-                                    modifier = Modifier
+                                    Modifier
                                         .size(12.dp)
                                         .background(
-                                            color =
-                                                if (index < pin.length) {
-                                                    MaterialTheme.colorScheme.primary
-                                                } else {
-                                                    MaterialTheme.colorScheme.surfaceVariant
-                                                },
-                                            shape = CircleShape
+                                            if (index < pin.length) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.surfaceVariant,
+                                            CircleShape
                                         )
                                 )
                             }
                         }
-
                         Spacer(Modifier.height(22.dp))
 
-                        val keys = listOf(
+                        listOf(
                             "1", "2", "3",
                             "4", "5", "6",
                             "7", "8", "9",
                             "⌫", "0", "UNLOCK"
-                        )
-
-                        keys.chunked(3).forEach { row ->
-
+                        ).chunked(3).forEach { row ->
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-
                                 row.forEach { key ->
-
                                     when (key) {
-
-                                        "⌫" -> {
-                                            Button(
-                                                onClick = {
-                                                    pin = pin.dropLast(1)
-                                                    error = false
-                                                },
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(56.dp),
-                                                shape = RoundedCornerShape(
-                                                    theme.cornerRadius.dp
-                                                )
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Backspace,
-                                                    contentDescription = "Delete"
-                                                )
-                                            }
+                                        "⌫" -> Button(
+                                            onClick = { pin = pin.dropLast(1); error = "" },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(theme.cornerRadius.dp)
+                                        ) {
+                                            Icon(Icons.Default.Backspace, contentDescription = "Delete")
                                         }
-
-                                        "UNLOCK" -> {
-                                            Button(
-                                                onClick = {
-                                                    verifyPin()
-                                                },
-                                                enabled = pin.length in 4..8,
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(56.dp),
-                                                shape = RoundedCornerShape(
-                                                    theme.cornerRadius.dp
-                                                )
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null
-                                                )
-
-                                                Spacer(Modifier.size(5.dp))
-
-                                                Text("Unlock")
-                                            }
+                                        "UNLOCK" -> Button(
+                                            onClick = ::authenticatePin,
+                                            enabled = pin.length in 4..8,
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(theme.cornerRadius.dp)
+                                        ) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                            Spacer(Modifier.size(5.dp))
+                                            Text("Unlock")
                                         }
-
-                                        else -> {
-                                            Button(
-                                                onClick = {
-                                                    if (pin.length < 8) {
-                                                        pin += key
-                                                        error = false
-                                                    }
-                                                },
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(56.dp),
-                                                shape = RoundedCornerShape(
-                                                    theme.cornerRadius.dp
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = key,
-                                                    style = MaterialTheme.typography.titleLarge
-                                                )
-                                            }
+                                        else -> Button(
+                                            onClick = {
+                                                if (pin.length < 8) {
+                                                    pin += key
+                                                    error = ""
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(56.dp),
+                                            shape = RoundedCornerShape(theme.cornerRadius.dp)
+                                        ) {
+                                            Text(key, style = MaterialTheme.typography.titleLarge)
                                         }
                                     }
                                 }
                             }
-
                             Spacer(Modifier.height(8.dp))
                         }
 
-                        if (
-                            method == AuthMethod.BIOMETRIC &&
-                            repo.hasPin()
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    forcePin = false
-                                    error = false
-                                }
-                            ) {
+                        if (method == AuthMethod.BIOMETRIC && repo.hasPin()) {
+                            TextButton(onClick = { forcePin = false; error = "" }) {
                                 Text("Use biometric")
                             }
                         }
                     }
+                }
+
+                if (error.isNotEmpty() && !blocked) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -478,40 +364,25 @@ fun LockScreen(
 }
 
 @Composable
-private fun PatternGrid(
-    onComplete: (String) -> Unit
-) {
-    var selected by remember {
-        mutableStateOf(emptyList<Int>())
-    }
+private fun PatternGrid(onComplete: (String) -> Unit) {
+    var selected by remember { mutableStateOf(emptyList<Int>()) }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-
         repeat(3) { row ->
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 repeat(3) { column ->
-
                     val index = row * 3 + column
                     val isSelected = selected.contains(index)
-
                     Button(
                         onClick = {
-                            if (!selected.contains(index)) {
-
-                                selected = selected + index
-
-                                if (selected.size >= 4) {
-                                    onComplete(
-                                        selected.joinToString("-")
-                                    )
-
+                            if (!isSelected) {
+                                val next = selected + index
+                                selected = next
+                                if (next.size >= 4) {
+                                    onComplete(next.joinToString("-"))
                                     selected = emptyList()
                                 }
                             }
@@ -519,9 +390,7 @@ private fun PatternGrid(
                         modifier = Modifier.size(66.dp),
                         shape = CircleShape
                     ) {
-                        Text(
-                            text = if (isSelected) "●" else ""
-                        )
+                        Text(if (isSelected) "●" else "")
                     }
                 }
             }
