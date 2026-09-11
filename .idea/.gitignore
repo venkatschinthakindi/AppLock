@@ -1,0 +1,138 @@
+# ============================================================
+# AppLock - Android / Kotlin / Gradle
+# ============================================================
+
+# ---------- Gradle ----------
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ---------- Android Studio / IntelliJ ----------
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries/
+.idea/**/shelf/
+
+# Android Studio generated files
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ---------- Android ----------
+local.properties
+*.apk
+*.aab
+*.apks
+*.aab.zip
+*.idsig
+
+# Generated Android files
+gen/
+out/
+
+# ---------- Kotlin ----------
+.kotlin/
+*.kotlin_module
+
+# ---------- Java ----------
+*.class
+
+# ---------- Native / CMake ----------
+.cxx/
+.externalNativeBuild/
+obj/
+
+# ---------- Build / packaging ----------
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# ---------- Signing / keystores ----------
+# Never commit private signing credentials.
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Keep only templates/examples if intentionally committed.
+# Example:
+# !config/release-signing.properties.example
+
+# ---------- Secrets / local configuration ----------
+# Local secrets
+secrets.properties
+local.properties
+.env
+.env.*
+!.env.example
+
+# Firebase / Google service configuration
+# Uncomment if these files contain project-specific secrets
+# google-services.json
+
+# Play Console / service-account credentials
+service-account*.json
+*-service-account*.json
+play-service-account*.json
+
+# ---------- Firebase / Crash reporting ----------
+firebase-debug.log
+firebase-debug.*.log
+
+# ---------- Android Studio caches ----------
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/misc.xml
+.idea/compiler.xml
+.idea/jarRepositories.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+
+# ---------- OS files ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---------- Windows ----------
+$RECYCLE.BIN/
+*.stackdump
+
+# ---------- macOS ----------
+.AppleDouble
+.LSOverride
+._*
+
+# ---------- Linux ----------
+*~
+.directory
+
+# ---------- Temporary archives ----------
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# ---------- Generated documentation / reports ----------
+/reports/
+/outputs/
+/screenshots/
+/test-results/
+
+# ---------- Benchmark / profiling ----------
+*.hprof
+*.prof
+
+# ---------- Compose ----------
+# Preview/build-generated artifacts
+.compose/

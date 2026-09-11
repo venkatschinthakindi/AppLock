@@ -1,0 +1,88 @@
+package applock.app.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun OnboardingScreen(onContinue: () -> Unit) {
+    var page by remember { mutableIntStateOf(0) }
+    val slides = listOf(
+        Triple(Icons.Default.Lock, "Private by design", "Protect the apps that matter without sending passwords or screen content to a server."),
+        Triple(Icons.Default.Security, "Lock what matters", "Choose apps, configure your session rule, and see truthful protection health at a glance."),
+        Triple(Icons.Default.Fingerprint, "Fast authentication", "Use PIN, pattern or Android biometric authentication. Security never waits for ads or network work.")
+    )
+    val item = slides[page]
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant)))
+            .padding(28.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                Modifier
+                    .size(132.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = .12f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Icon(item.first, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
+            }
+            Spacer(Modifier.height(30.dp))
+            Text("AppLock", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(item.second, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Text(item.third, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.height(28.dp))
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(slides.size) { i ->
+                    Box(Modifier.size(if (i == page) 28.dp else 8.dp, 8.dp).background(if (i == page) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50)))
+                }
+            }
+            Spacer(Modifier.height(30.dp))
+            Button(
+                onClick = { if (page < slides.lastIndex) page++ else onContinue() },
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) { Text(if (page < slides.lastIndex) "Continue" else "Set up protection") }
+            if (page < slides.lastIndex) {
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.TextButton(onClick = onContinue) { Text("Skip") }
+            }
+        }
+    }
+}

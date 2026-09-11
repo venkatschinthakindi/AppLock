@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">App Lock</string><string name="accessibility_service_label">App Lock protection service</string><string name="accessibility_service_description">Detects protected app window transitions so App Lock can show authentication. It does not retrieve window content.</string></resources>

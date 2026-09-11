@@ -35,7 +35,7 @@ Open the root folder in Android Studio with JDK 21 and Android SDK 36 installed.
 
 ## First release configuration you must complete
 
-1. Choose and freeze the final Play application ID before the first Play upload. The sample is `applock.app`.
+1. Final application ID is `applock.app`.
 2. Create the Play subscription product `app_lock_pro_monthly` and verify its base plan/offer in Play Console.
 3. Configure your release/upload keystore through the CI secrets template; never put passwords or keystores in this repository.
 4. Complete the AccessibilityService declaration and Data Safety forms with wording that exactly matches the shipped implementation.

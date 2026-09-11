@@ -1,0 +1,27 @@
+name: App Lock release build
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        required: true
+        default: "1"
+      version_name:
+        required: true
+        default: "1.0.0"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - run: chmod +x ./gradlew
+      - name: Check production AdMob configuration
+        run: |
+          grep -q 'ca-app-pub-1267608571294570~6976756241' app/src/main/AndroidManifest.xml
+          grep -R -q 'ca-app-pub-1267608571294570/9300656932' app/src/main/java
+      - name: Build debug verification artifact
+        run: ./gradlew assembleDebug

@@ -1,0 +1,18 @@
+AppLock Production Phase 1-5 — reviewed/hardened source snapshot
+Application ID: applock.app
+Namespace: applock.app
+Root package: applock.app
+
+Key reviewed areas:
+- Central Compose theme and premium visual system
+- First-run onboarding and accessibility disclosure
+- Protected app management
+- Protection Health truthfulness
+- Authentication setup and lock screen
+- Session handling and screen-off invalidation
+- Back navigation cannot dismiss lock activity
+- Secure Keystore-backed credential storage
+- Accessibility service reads package/window transitions only
+- Ad-free authentication surface; banner flag remains disabled
+- Billing remains independent from authentication
+- Hamburger navigation and sponsor card
