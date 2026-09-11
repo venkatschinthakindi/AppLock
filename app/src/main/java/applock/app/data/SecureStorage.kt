@@ -24,7 +24,7 @@ class SecureStorage(private val context: Context) {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setUserAuthenticationRequired(false)
-                .build()
+                .build())
         return generator.generateKey()
     }
 

@@ -3,6 +3,7 @@ package applock.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +39,7 @@ import applock.app.ui.components.PremiumCard
 fun CustomizationScreen() {
     val app = LocalContext.current.applicationContext as AppLockApplication
     val theme by app.repository.theme.collectAsState()
+
     val accents = listOf(
         0xFF6C63FFL to "Violet",
         0xFF00A8E8L to "Ocean",
@@ -44,64 +49,165 @@ fun CustomizationScreen() {
         0xFF9B5DE5L to "Plum"
     )
 
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("One theme engine, everywhere", style = MaterialTheme.typography.headlineSmall)
-        Text("Changes apply consistently to the dashboard, settings and lock experience.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(
+        modifier = Modifier.padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "One theme engine, everywhere",
+            style = MaterialTheme.typography.headlineSmall
+        )
 
-        PremiumCard(title = "Theme mode", subtitle = "Light, dark or follow Android") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Changes apply consistently to the dashboard, settings and lock experience.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        PremiumCard(
+            title = "Theme mode",
+            subtitle = "Light, dark or follow Android"
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ThemeMode.entries.forEach { mode ->
-                    FilterChip(selected = theme.mode == mode, onClick = { app.repository.updateTheme { it.copy(mode = mode) } }, label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    FilterChip(
+                        selected = theme.mode == mode,
+                        onClick = {
+                            app.repository.updateTheme { settings ->
+                                settings.copy(mode = mode)
+                            }
+                        },
+                        label = {
+                            Text(
+                                mode.name
+                                    .lowercase()
+                                    .replaceFirstChar { character ->
+                                        character.uppercase()
+                                    }
+                            )
+                        }
+                    )
                 }
             }
         }
 
-        PremiumCard(title = "Accent color", subtitle = "Used for primary actions and status emphasis") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PremiumCard(
+            title = "Accent color",
+            subtitle = "Used for primary actions and status emphasis"
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 accents.forEach { (value, label) ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        androidx.compose.foundation.layout.Box(
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(Color(value.toInt()))
-                                .clickable { app.repository.updateTheme { it.copy(accent = value) } }
+                                .clickable {
+                                    app.repository.updateTheme { settings ->
+                                        settings.copy(accent = value)
+                                    }
+                                }
                         )
-                        Text(label, style = MaterialTheme.typography.labelSmall)
+
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
                 }
             }
         }
 
-        PremiumCard(title = "Corner radius", subtitle = "Tune the visual softness") {
+        PremiumCard(
+            title = "Corner radius",
+            subtitle = "Tune the visual softness"
+        ) {
             Slider(
                 value = theme.cornerRadius,
-                onValueChange = { app.repository.updateTheme { it.copy(cornerRadius = it) } },
+                onValueChange = { newRadius ->
+                    app.repository.updateTheme { settings ->
+                        settings.copy(cornerRadius = newRadius)
+                    }
+                },
                 valueRange = 10f..28f,
                 steps = 8
             )
-            Text("${theme.cornerRadius.toInt()} dp", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Text(
+                text = "${theme.cornerRadius.toInt()} dp",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
-        PremiumCard(title = "Unlock motion", subtitle = "Animation beautifies the experience but never delays authentication") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PremiumCard(
+            title = "Unlock motion",
+            subtitle = "Animation beautifies the experience but never delays authentication"
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 AnimationStyle.entries.forEach { style ->
                     val enabled = style != AnimationStyle.CRYSTAL_UNLOCK
+
                     FilterChip(
                         selected = theme.animationStyle == style,
                         enabled = enabled,
-                        onClick = { app.repository.updateTheme { it.copy(animationStyle = style) } },
-                        label = { Text(if (style == AnimationStyle.CRYSTAL_UNLOCK) "Crystal · Pro" else style.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) }
+                        onClick = {
+                            app.repository.updateTheme { settings ->
+                                settings.copy(animationStyle = style)
+                            }
+                        },
+                        label = {
+                            Text(
+                                if (style == AnimationStyle.CRYSTAL_UNLOCK) {
+                                    "Crystal · Pro"
+                                } else {
+                                    style.name
+                                        .replace('_', ' ')
+                                        .lowercase()
+                                        .replaceFirstChar { character ->
+                                            character.uppercase()
+                                        }
+                                }
+                            )
+                        }
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text("Reduced motion")
-                    Text("Prefer minimal movement", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    Text(
+                        text = "Prefer minimal movement",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Switch(checked = theme.reducedMotion, onCheckedChange = { checked -> app.repository.updateTheme { it.copy(reducedMotion = checked) } })
+
+                Switch(
+                    checked = theme.reducedMotion,
+                    onCheckedChange = { checked ->
+                        app.repository.updateTheme { settings ->
+                            settings.copy(reducedMotion = checked)
+                        }
+                    }
+                )
             }
         }
     }
