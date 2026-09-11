@@ -254,21 +254,15 @@ ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\Andro
 receiver#applock.app.boot.BootReceiver
 ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:9-16:20
 	android:exported
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:84-107
-	android:directBootAware
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:53-83
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:53-76
 	android:name
 		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:19-52
-intent-filter#action:name:android.intent.action.BOOT_COMPLETED+action:name:android.intent.action.LOCKED_BOOT_COMPLETED
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:13-175
+intent-filter#action:name:android.intent.action.BOOT_COMPLETED
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:13-106
 action#android.intent.action.BOOT_COMPLETED
 ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:28-90
 	android:name
 		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:36-87
-action#android.intent.action.LOCKED_BOOT_COMPLETED
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:90-159
-	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:98-156
 meta-data#com.google.android.gms.ads.APPLICATION_ID
 ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:17:9-134
 	android:value

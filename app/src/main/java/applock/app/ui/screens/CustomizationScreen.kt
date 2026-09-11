@@ -45,16 +45,16 @@ fun CustomizationScreen() {
     )
 
     Column(
-        modifier = Modifier.padding(20.dp),
+        Modifier.padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            text = "One theme engine, everywhere",
+            "One theme engine, everywhere",
             style = MaterialTheme.typography.headlineSmall
         )
 
         Text(
-            text = "Changes apply consistently to the dashboard, settings and lock experience.",
+            "Changes apply consistently to the dashboard, settings and lock experience.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -69,8 +69,8 @@ fun CustomizationScreen() {
                     FilterChip(
                         selected = theme.mode == mode,
                         onClick = {
-                            app.repository.updateTheme { current ->
-                                current.copy(mode = mode)
+                            app.repository.updateTheme {
+                                it.copy(mode = mode)
                             }
                         },
                         label = {
@@ -102,14 +102,14 @@ fun CustomizationScreen() {
                                 .clip(CircleShape)
                                 .background(Color(value.toInt()))
                                 .clickable {
-                                    app.repository.updateTheme { current ->
-                                        current.copy(accent = value)
+                                    app.repository.updateTheme {
+                                        it.copy(accent = value)
                                     }
                                 }
                         )
 
                         Text(
-                            text = label,
+                            label,
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
@@ -123,11 +123,9 @@ fun CustomizationScreen() {
         ) {
             Slider(
                 value = theme.cornerRadius,
-                onValueChange = { sliderValue ->
-                    app.repository.updateTheme { current ->
-                        current.copy(
-                            cornerRadius = sliderValue
-                        )
+                onValueChange = { value ->
+                    app.repository.updateTheme { settings ->
+                        settings.copy(cornerRadius = value)
                     }
                 },
                 valueRange = 10f..28f,
@@ -135,7 +133,7 @@ fun CustomizationScreen() {
             )
 
             Text(
-                text = "${theme.cornerRadius.toInt()} dp",
+                "${theme.cornerRadius.toInt()} dp",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -154,10 +152,8 @@ fun CustomizationScreen() {
                         selected = theme.animationStyle == style,
                         enabled = enabled,
                         onClick = {
-                            app.repository.updateTheme { current ->
-                                current.copy(
-                                    animationStyle = style
-                                )
+                            app.repository.updateTheme {
+                                it.copy(animationStyle = style)
                             }
                         },
                         label = {
@@ -176,22 +172,20 @@ fun CustomizationScreen() {
                 }
             }
 
-            Spacer(
-                modifier = Modifier.height(8.dp)
-            )
+            Spacer(Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(
-                    modifier = Modifier.weight(1f)
+                    Modifier.weight(1f)
                 ) {
                     Text("Reduced motion")
 
                     Text(
-                        text = "Prefer minimal movement",
+                        "Prefer minimal movement",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -200,10 +194,8 @@ fun CustomizationScreen() {
                 Switch(
                     checked = theme.reducedMotion,
                     onCheckedChange = { checked ->
-                        app.repository.updateTheme { current ->
-                            current.copy(
-                                reducedMotion = checked
-                            )
+                        app.repository.updateTheme {
+                            it.copy(reducedMotion = checked)
                         }
                     }
                 )

@@ -19,6 +19,21 @@ import applock.app.AppLockApplication
 
 @Composable
 fun SettingsScreen() {
+    val app = LocalContext.current.applicationContext as AppLockApplication
+    if (app.repository.hasCredential()) {
+        SecurityGateScreen(
+            title = "AppLock settings are secured",
+            description = "Authenticate before changing system-access paths or security state."
+        ) {
+            SettingsEditor()
+        }
+    } else {
+        SettingsEditor()
+    }
+}
+
+@Composable
+private fun SettingsEditor() {
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

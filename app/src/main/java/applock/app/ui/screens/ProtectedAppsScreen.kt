@@ -32,6 +32,21 @@ import applock.app.AppLockApplication
 @Composable
 fun ProtectedAppsScreen() {
     val app = LocalContext.current.applicationContext as AppLockApplication
+    if (app.repository.hasCredential()) {
+        SecurityGateScreen(
+            title = "Protected apps are secured",
+            description = "Authenticate before adding or removing apps from the protection list."
+        ) {
+            ProtectedAppsEditor()
+        }
+    } else {
+        ProtectedAppsEditor()
+    }
+}
+
+@Composable
+private fun ProtectedAppsEditor() {
+    val app = LocalContext.current.applicationContext as AppLockApplication
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("all") }
     var apps by remember { mutableStateOf(app.repository.launchableApps()) }

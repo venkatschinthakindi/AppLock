@@ -4,6 +4,22 @@ enum class AuthMethod { PIN, PATTERN, BIOMETRIC }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 enum class SessionRule { IMMEDIATELY, AFTER_LEAVING, SCREEN_OFF, MINUTES_1, MINUTES_5, MINUTES_15, MINUTES_30 }
 enum class HealthState { GREEN, YELLOW, RED }
+
+enum class ProtectionReason {
+    PROTECTED,
+    NO_PROTECTED_APPS,
+    ACCESSIBILITY_DISABLED,
+    SECURITY_SETUP_REQUIRED
+}
+
+data class ProtectionSnapshot(
+    val state: HealthState,
+    val reason: ProtectionReason,
+    val accessibilityEnabled: Boolean,
+    val credentialConfigured: Boolean,
+    val protectedAppCount: Int,
+    val forceStopRecoveryPending: Boolean
+)
 enum class AnimationStyle { COSMIC_ORB, LIQUID_FLOW, CRYSTAL_UNLOCK }
 
 data class ThemeSettings(

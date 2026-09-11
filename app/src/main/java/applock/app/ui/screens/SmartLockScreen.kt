@@ -24,6 +24,21 @@ import applock.app.domain.SessionRule
 @Composable
 fun SmartLockScreen() {
     val app = LocalContext.current.applicationContext as AppLockApplication
+    if (app.repository.hasCredential()) {
+        SecurityGateScreen(
+            title = "Session rules are secured",
+            description = "Authenticate before changing when protected apps can remain unlocked."
+        ) {
+            SmartLockEditor()
+        }
+    } else {
+        SmartLockEditor()
+    }
+}
+
+@Composable
+private fun SmartLockEditor() {
+    val app = LocalContext.current.applicationContext as AppLockApplication
     var rule by remember { mutableStateOf(app.repository.getSessionRule()) }
     val options = listOf(
         Triple(SessionRule.IMMEDIATELY, "Every launch", "Authenticate whenever a protected app opens."),

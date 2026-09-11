@@ -19,6 +19,10 @@ class LockEngine(private val repository: AppLockRepository) {
         lastLaunchPackage = packageName
         lastLaunchElapsed = SystemClock.elapsedRealtime()
         if (!repository.isProtected(packageName)) { _state.value = State.IDLE; return false }
+        if (!repository.accessibilityEnabled() || !repository.authenticationConfigured()) {
+            _state.value = State.LIMITED_PROTECTION
+            return false
+        }
         _state.value = State.PROTECTED_APP_DETECTED
         _state.value = State.CHECKING_STATE
         val required = repository.shouldRequireAuth(packageName)

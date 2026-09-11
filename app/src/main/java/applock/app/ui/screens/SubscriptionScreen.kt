@@ -15,29 +15,57 @@ fun SubscriptionScreen() {
     val activity = context as? Activity
     val billing = remember { BillingManager(context.applicationContext) }
     val pro by billing.isPro.collectAsState()
-    LaunchedEffect(Unit) { billing.connect() }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("App Lock Pro", style = MaterialTheme.typography.headlineMedium)
-        if (pro) AssistChip(onClick = {}, label = { Text("Pro active") })
-        Text("₹30/month initially. Google Play displays the final price, billing period, renewal and cancellation terms before purchase.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Includes", style = MaterialTheme.typography.titleMedium)
-        Text("• No ads in eligible app surfaces\n• Premium themes and unlock animations\n• Advanced customization\n• Future convenience features")
-        Button(
-    enabled = activity != null && !pro,
-    onClick = {
-        activity?.let { currentActivity ->
-            billing.launchPurchase(currentActivity)
-        }
-    },
-    modifier = Modifier.fillMaxWidth()
-) {
-    Text(
+
+    LaunchedEffect(Unit) {
+        billing.connect()
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            "App Lock Pro",
+            style = MaterialTheme.typography.headlineMedium
+        )
+
         if (pro) {
-            "Subscription active"
-        } else {
-            "Continue with Google Play"
+            AssistChip(
+                onClick = {},
+                label = { Text("Pro active") }
+            )
         }
-    )
-}
+
+        Text(
+            "₹30/month initially. Google Play displays the final price, billing period, renewal and cancellation terms before purchase.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Text(
+            "Includes",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Text(
+            "• No ads in eligible app surfaces\n" +
+                "• Premium themes and unlock animations\n" +
+                "• Advanced customization\n" +
+                "• Future convenience features"
+        )
+
+        Button(
+            enabled = activity != null && !pro,
+            onClick = {
+                activity?.let(billing::launchPurchase)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (pro) "Subscription active"
+                else "Continue with Google Play"
+            )
+        }
     }
 }

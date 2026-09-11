@@ -54,5 +54,17 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         })
     }
 
-    override fun onInterrupt() = Unit
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        lastPackage = null
+        lastPromptAt = 0L
+        app.lockEngine.reset()
+        app.repository.refreshProtectionState()
+    }
+
+    override fun onInterrupt() {
+        lastPackage = null
+        app.lockEngine.reset()
+        app.repository.refreshProtectionState()
+    }
 }
