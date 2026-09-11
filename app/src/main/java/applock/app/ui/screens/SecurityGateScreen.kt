@@ -56,7 +56,7 @@ fun SecurityGateScreen(
     val app = context.applicationContext as AppLockApplication
     val repo = app.repository
     val method = remember { repo.getAuthMethod() }
-    val configured = remember { repo.hasCredential() }
+    val configured = remember { repo.authenticationConfigured() }
     var authorized by remember { mutableStateOf(!configured) }
     var usePinFallback by remember { mutableStateOf(method != AuthMethod.BIOMETRIC) }
     var pin by remember { mutableStateOf("") }

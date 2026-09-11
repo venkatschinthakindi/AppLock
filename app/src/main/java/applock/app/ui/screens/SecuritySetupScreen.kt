@@ -56,7 +56,7 @@ fun SecuritySetupScreen() {
     val app = context.applicationContext as AppLockApplication
     val repo = app.repository
     val currentMethod = remember { repo.getAuthMethod() }
-    val alreadyConfigured = remember { repo.hasCredential() }
+    val alreadyConfigured = remember { repo.authenticationConfigured() }
 
     var authorized by remember { mutableStateOf(!alreadyConfigured) }
     var usingPinFallback by remember { mutableStateOf(currentMethod != AuthMethod.BIOMETRIC) }

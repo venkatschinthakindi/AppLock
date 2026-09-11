@@ -75,7 +75,8 @@ class AppLockRepository(private val context: Context) {
     }
     fun verifyPattern(pattern: String) = secure.read("pattern") == pattern
     fun hasPattern() = secure.read("pattern") != null
-    fun hasCredential() = hasPin() || hasPattern()
+    fun hasCredential(): Boolean = authenticationConfigured()
+
     fun authenticationConfigured(): Boolean = when (getAuthMethod()) {
         AuthMethod.PIN -> hasPin()
         AuthMethod.PATTERN -> hasPattern()
