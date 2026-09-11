@@ -7,6 +7,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 class LockActivity : FragmentActivity() {
 
@@ -14,7 +17,7 @@ class LockActivity : FragmentActivity() {
         const val EXTRA_PACKAGE_NAME = "protected_package"
     }
 
-    private var packageNameTarget: String = ""
+    private var packageNameTarget by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

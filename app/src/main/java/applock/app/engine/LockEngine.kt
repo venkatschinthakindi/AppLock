@@ -47,9 +47,17 @@ class LockEngine(private val repository: AppLockRepository) {
             return false
         }
 
-        repository.markUnlocked(packageName)
+        if (!repository.markUnlocked(packageName)) {
+            _state.value = State.AUTHENTICATION_REQUIRED
+            return false
+        }
+
         _state.value = State.UNLOCKED
         return true
     }
-    fun reset() { _state.value = State.IDLE; lastLaunchPackage = null }
+    fun reset() {
+        _state.value = State.IDLE
+        lastLaunchPackage = null
+        lastLaunchElapsed = 0L
+    }
 }

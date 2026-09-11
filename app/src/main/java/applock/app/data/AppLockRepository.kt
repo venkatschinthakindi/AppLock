@@ -103,15 +103,46 @@ class AppLockRepository(private val context: Context) {
 
     fun protectedPackages(): Set<String> = prefs.getStringSet("protected_packages", emptySet())?.toSet() ?: emptySet()
     fun setProtected(packageName: String, enabled: Boolean) {
+        if (packageName.isBlank() || packageName == context.packageName) {
+            return
+        }
+
         val set = protectedPackages().toMutableSet()
-        if (enabled) set.add(packageName) else set.remove(packageName)
-        prefs.edit().putStringSet("protected_packages", set).apply()
+
+        if (enabled) {
+            set.add(packageName)
+        } else {
+            set.remove(packageName)
+        }
+
+        prefs.edit()
+            .putStringSet("protected_packages", set)
+            .apply()
+
         refreshProtectionState()
     }
     fun isProtected(packageName: String) = protectedPackages().contains(packageName)
 
-    fun markUnlocked(packageName: String) = prefs.edit().putLong("unlock_$packageName", System.currentTimeMillis()).apply()
-    fun clearUnlock(packageName: String) = prefs.edit().remove("unlock_$packageName").apply()
+    fun markUnlocked(packageName: String): Boolean {
+        if (packageName.isBlank() || !isProtected(packageName)) {
+            return false
+        }
+
+        prefs.edit()
+            .putLong("unlock_$packageName", System.currentTimeMillis())
+            .apply()
+
+        return true
+    }
+    fun clearUnlock(packageName: String) {
+        if (packageName.isBlank()) {
+            return
+        }
+
+        prefs.edit()
+            .remove("unlock_$packageName")
+            .apply()
+    }
 
     /** Unlock sessions never survive a device reboot. */
     /** A process restart must not turn a previous in-memory authentication into a new session. */
@@ -129,14 +160,30 @@ class AppLockRepository(private val context: Context) {
 
     fun shouldRequireAuth(packageName: String, now: Long = System.currentTimeMillis()): Boolean {
         if (!isProtected(packageName)) return false
+
         val last = recentlyUnlockedAt(packageName)
+
         if (last == 0L) return true
+
+        // Fail closed if the system clock moved backwards.
+        if (now < last) return true
+
         return when (getSessionRule()) {
-            SessionRule.IMMEDIATELY, SessionRule.AFTER_LEAVING, SessionRule.SCREEN_OFF -> true
-            SessionRule.MINUTES_1 -> now - last >= 60_000L
-            SessionRule.MINUTES_5 -> now - last >= 300_000L
-            SessionRule.MINUTES_15 -> now - last >= 900_000L
-            SessionRule.MINUTES_30 -> now - last >= 1_800_000L
+            SessionRule.IMMEDIATELY,
+            SessionRule.AFTER_LEAVING,
+            SessionRule.SCREEN_OFF -> true
+
+            SessionRule.MINUTES_1 ->
+                now - last >= 60_000L
+
+            SessionRule.MINUTES_5 ->
+                now - last >= 300_000L
+
+            SessionRule.MINUTES_15 ->
+                now - last >= 900_000L
+
+            SessionRule.MINUTES_30 ->
+                now - last >= 1_800_000L
         }
     }
 
