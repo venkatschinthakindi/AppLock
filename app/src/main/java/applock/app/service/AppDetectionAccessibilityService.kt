@@ -8,64 +8,119 @@ import applock.app.domain.SessionRule
 import applock.app.ui.lock.LockActivity
 
 /**
- * Narrow App Lock service.
+ * Lightweight foreground-app detector.
  *
- * It reacts only to package/window transitions.
- * It never reads window text, node content, passwords, messages or screen contents.
+ * Security-sensitive decision making is delegated to LockEngine.
  *
- * The LockEngine is the authoritative security decision point.
+ * This service:
+ * - does not retrieve window content
+ * - does not inspect text
+ * - does not inspect passwords/messages
+ * - does not poll
+ * - does not perform network operations
+ * - only reacts to package/window transition events
  */
 class AppDetectionAccessibilityService : AccessibilityService() {
 
-    private val app
+    private val app: AppLockApplication
         get() = application as AppLockApplication
 
-    private var lastPackage: String? = null
+    /*
+     * Last external package observed by the service.
+     *
+     * IMPORTANT:
+     * We intentionally do not use this as a permanent "same package means
+     * ignore" gate. Android can omit/interleave accessibility events.
+     *
+     * The LockEngine performs the final decision.
+     */
+    private var lastExternalPackage: String? = null
+
+    /*
+     * Prevent duplicate LockActivity launches when Android emits multiple
+     * qualifying events in a very short period.
+     */
+    private var lockLaunchInProgress = false
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val type = event?.eventType ?: return
+        val accessibilityEvent = event ?: return
 
-        if (
-            type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            type != AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) {
-            return
+        when (accessibilityEvent.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> Unit
+
+            else -> return
         }
 
-        val pkg = event.packageName?.toString()?.takeIf { it.isNotBlank() }
+        val pkg = accessibilityEvent.packageName
+            ?.toString()
+            ?.takeIf { it.isNotBlank() }
             ?: return
 
-        // Never react to AppLock's own UI.
-        if (pkg == packageName) return
-
-        val previous = lastPackage
-
-        // Treat a package transition as the meaningful app-open event.
-        // The LockEngine has its own short duplicate-event protection.
-        if (pkg == previous) return
-
-        // Leaving a protected app ends an AFTER_LEAVING session.
-        if (
-            previous != null &&
-            app.repository.getSessionRule() == SessionRule.AFTER_LEAVING
-        ) {
-            app.repository.clearUnlock(previous)
-        }
-
-        lastPackage = pkg
-
         /*
-         * The LockEngine is the authoritative decision point.
+         * Never process our own UI as a protected application.
          *
-         * It checks:
-         * - whether the package is protected
-         * - whether Accessibility is actually available
-         * - whether authentication is configured
-         * - whether the current session still permits access
+         * However, do treat it as a transition boundary so that the next
+         * protected-app event is not incorrectly suppressed by a stale
+         * lastPackage value.
          */
-        if (!app.lockEngine.onPackageVisible(pkg)) {
+        if (pkg == packageName) {
+            lastExternalPackage = null
             return
         }
+
+        /*
+         * Any external package means the user is no longer exclusively inside
+         * the previously observed protected application.
+         */
+        val previous = lastExternalPackage
+
+        if (previous != null && previous != pkg) {
+            /*
+             * AFTER_LEAVING sessions are explicitly invalidated when the user
+             * leaves the protected application.
+             *
+             * Only clear the previous package when it was actually protected.
+             */
+            if (
+                app.repository.getSessionRule() == SessionRule.AFTER_LEAVING &&
+                app.repository.isProtected(previous)
+            ) {
+                app.repository.clearUnlock(previous)
+            }
+
+            /*
+             * This is also the signal that the user has left the previously
+             * authenticated application.
+             */
+            app.lockEngine.onNonProtectedPackageVisible(pkg)
+        }
+
+        /*
+         * Do not perform expensive package-manager or preference work before
+         * the engine has a chance to reject the event.
+         *
+         * The engine itself performs the authoritative protection check.
+         */
+        val shouldLock = app.lockEngine.onPackageVisible(pkg)
+
+        lastExternalPackage = pkg
+
+        if (!shouldLock) {
+            lockLaunchInProgress = false
+            return
+        }
+
+        /*
+         * Accessibility can generate several qualifying events around an app
+         * transition. Do not launch multiple LockActivity instances.
+         */
+        if (lockLaunchInProgress) {
+            return
+        }
+
+        lockLaunchInProgress = true
+        app.lockEngine.markAuthUiShown()
 
         startActivity(
             Intent(this, LockActivity::class.java).apply {
@@ -74,6 +129,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                 )
+
                 putExtra(
                     LockActivity.EXTRA_PACKAGE_NAME,
                     pkg
@@ -85,14 +141,16 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
 
-        lastPackage = null
+        lastExternalPackage = null
+        lockLaunchInProgress = false
 
         app.lockEngine.reset()
         app.repository.refreshProtectionState()
     }
 
     override fun onInterrupt() {
-        lastPackage = null
+        lastExternalPackage = null
+        lockLaunchInProgress = false
 
         app.lockEngine.reset()
         app.repository.refreshProtectionState()
