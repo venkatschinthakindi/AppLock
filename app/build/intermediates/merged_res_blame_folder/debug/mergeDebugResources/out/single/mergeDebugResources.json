@@ -1,15 +1,19 @@
 [
     {
-        "merged": "C:\\Users\\chven\\.gradle\\daemon\\8.11.1\\applock.app-debug-61:\\drawable_ic_app_lock.xml.flat",
-        "source": "C:\\Users\\chven\\.gradle\\daemon\\8.11.1\\applock.app-main-63:\\drawable\\ic_app_lock.xml"
+        "merged": "applock.app-debug-61:/xml_accessibility_service_config.xml.flat",
+        "source": "applock.app-main-63:/xml/accessibility_service_config.xml"
     },
     {
-        "merged": "C:\\Users\\chven\\.gradle\\daemon\\8.11.1\\applock.app-debug-61:\\xml_data_extraction_rules.xml.flat",
-        "source": "C:\\Users\\chven\\.gradle\\daemon\\8.11.1\\applock.app-main-63:\\xml\\data_extraction_rules.xml"
+        "merged": "applock.app-debug-61:/xml_data_extraction_rules.xml.flat",
+        "source": "applock.app-main-63:/xml/data_extraction_rules.xml"
     },
     {
-        "merged": "C:\\Users\\chven\\.gradle\\daemon\\8.11.1\\applock.app-debug-61:\\xml_accessibility_service_config.xml.flat",
-        "source": "C:\\Users\\chven\\.gradle\\daemon\\8.11.1\\applock.app-main-63:\\xml\\accessibility_service_config.xml"
+        "merged": "applock.app-debug-61:/xml_app_lock_device_admin.xml.flat",
+        "source": "applock.app-main-63:/xml/app_lock_device_admin.xml"
+    },
+    {
+        "merged": "applock.app-debug-61:/drawable_ic_app_lock.xml.flat",
+        "source": "applock.app-main-63:/drawable/ic_app_lock.xml"
     },
     {
         "merged": "applock.app-debug-61:/drawable-nodpi_atoolix_logo.png.flat",

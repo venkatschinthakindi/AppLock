@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-19:12
-INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-19:12
-INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-19:12
-INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-19:12
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-78:12
+INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-78:12
+INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-78:12
+INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:1-78:12
 MERGED from [androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:17:1-29:12
 MERGED from [androidx.appcompat:appcompat:1.2.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\fd06575393de1875c76970c90735b918\transformed\appcompat-1.2.0\AndroidManifest.xml:17:1-24:12
 MERGED from [com.google.android.gms:play-services-ads:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\cf031a7b335aa2209b94c70c36ffba84\transformed\play-services-ads-24.6.0\AndroidManifest.xml:17:1-25:12
@@ -113,20 +113,20 @@ MERGED from [com.google.firebase:firebase-encoders-json:18.0.0] C:\Gradle\bin\wr
 	xmlns:android
 		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:2:11-69
 uses-permission#android.permission.USE_BIOMETRIC
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:3:5-72
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:4:5-72
 MERGED from [androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:24:5-72
 MERGED from [androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:24:5-72
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:3:22-69
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:4:22-69
 uses-permission#android.permission.RECEIVE_BOOT_COMPLETED
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:4:5-81
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:5-81
 REJECTED from [com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:30:5-32:31
 REJECTED from [androidx.work:work-runtime:2.7.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\071579115a907c502224668fbb2d6c3b\transformed\work-runtime-2.7.0\AndroidManifest.xml:27:5-81
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:4:22-78
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:22-78
 application
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:5-18:19
-INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:5-18:19
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:5-77:19
+INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:5-77:19
 MERGED from [com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:70:5-114:19
 MERGED from [com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:70:5-114:19
 MERGED from [com.google.android.gms:play-services-ads-identifier:18.0.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\bab848765f8d3966532276ceb55c548d\transformed\play-services-ads-identifier-18.0.0\AndroidManifest.xml:25:5-20
@@ -176,99 +176,123 @@ MERGED from [androidx.room:room-runtime:2.2.5] C:\Gradle\bin\wrapper\dists\gradl
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.16.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\6984bba4a47b6763f6dde1ce96363267\transformed\core-1.16.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:242-268
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:9-35
 	android:label
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:172-204
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:12:9-41
 	android:fullBackupContent
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:81-114
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:9-42
 	android:icon
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:205-241
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:13:9-45
 	android:allowBackup
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:53-80
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:9:9-36
 	android:theme
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:269-305
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:9-45
 	android:dataExtractionRules
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:115-171
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:11:9-65
 	android:usesCleartextTraffic
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:306-342
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:16:9-45
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:18-52
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:9-43
 activity#applock.app.ui.lock.LockActivity
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:9-269
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:18:9-26:41
 	android:screenOrientation
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:146-182
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:23:13-49
 	android:turnScreenOn
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:213-240
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:25:13-40
 	android:excludeFromRecents
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:56-89
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:20:13-46
 	android:showWhenLocked
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:183-212
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:24:13-42
 	android:launchMode
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:115-145
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:22:13-43
 	android:noHistory
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:241-266
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:26:13-38
 	android:exported
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:90-114
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:21:13-37
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:19-55
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:19:13-49
 activity#applock.app.MainActivity
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:9-9:20
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:28:9-36:20
 	android:screenOrientation
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:72-111
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:31:13-52
 	android:exported
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:48-71
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:30:13-36
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:19-47
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:29:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:13-156
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:32:13-35:29
 action#android.intent.action.MAIN
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:28-80
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:33:17-69
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:36-77
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:33:25-66
 category#android.intent.category.LAUNCHER
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:80-140
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:34:17-77
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:90-137
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:34:27-74
 service#applock.app.service.AppDetectionAccessibilityService
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:9-13:19
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:38:9-49:19
 	android:label
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:100-151
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:41:13-64
 	android:exported
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:75-99
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:40:13-37
 	android:permission
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:152-218
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:42:13-79
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:18-74
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:39:13-69
 intent-filter#action:name:android.accessibilityservice.AccessibilityService
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:11:13-119
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:43:13-45:29
 action#android.accessibilityservice.AccessibilityService
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:11:28-103
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:44:17-92
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:11:36-100
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:44:25-89
 meta-data#android.accessibilityservice
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:12:13-123
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:46:13-48:72
 	android:resource
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:12:68-120
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:48:17-69
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:12:24-67
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:47:17-60
 receiver#applock.app.boot.BootReceiver
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:9-16:20
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:51:9-57:20
 	android:exported
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:53-76
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:53:13-36
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:19-52
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:52:13-46
 intent-filter#action:name:android.intent.action.BOOT_COMPLETED
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:13-106
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:54:13-56:29
 action#android.intent.action.BOOT_COMPLETED
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:28-90
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:55:17-79
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:36-87
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:55:25-76
+receiver#applock.app.security.AppLockDeviceAdminReceiver
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:59:9-71:20
+	android:label
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:63:13-45
+	android:exported
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:62:13-36
+	android:permission
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:64:13-70
+	android:description
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:61:13-67
+	android:name
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:60:13-64
+meta-data#android.app.device_admin
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:65:13-67:65
+	android:resource
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:67:17-62
+	android:name
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:66:17-56
+intent-filter#action:name:android.app.action.DEVICE_ADMIN_ENABLED
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:68:13-70:29
+action#android.app.action.DEVICE_ADMIN_ENABLED
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:69:17-82
+	android:name
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:69:25-79
 meta-data#com.google.android.gms.ads.APPLICATION_ID
-ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:17:9-134
+ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:73:9-75:70
 	android:value
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:17:77-131
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:75:13-67
 	android:name
-		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:17:20-76
+		ADDED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:74:13-69
 uses-sdk
 INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml

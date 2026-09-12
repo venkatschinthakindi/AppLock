@@ -1069,6 +1069,8 @@ int string copy_toast_msg 0x7f0e003c
 int string default_error_message 0x7f0e003d
 int string default_error_msg 0x7f0e003e
 int string default_popup_window_title 0x7f0e003f
+int string device_admin_description 0x7f0e00b0
+int string device_admin_explanation 0x7f0e00b1
 int string dropdown_menu 0x7f0e0040
 int string fallback_menu_item_copy_link 0x7f0e0041
 int string fallback_menu_item_open_in_browser 0x7f0e0042
@@ -2069,6 +2071,7 @@ int styleable ViewStubCompat_android_id 0
 int styleable ViewStubCompat_android_layout 1
 int styleable ViewStubCompat_android_inflatedId 2
 int xml accessibility_service_config 0x7f110000
+int xml app_lock_device_admin 0x7f110004
 int xml com_android_billingclient_phenotype 0x7f110001
 int xml data_extraction_rules 0x7f110002
 int xml image_share_filepaths 0x7f110003

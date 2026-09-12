@@ -1070,6 +1070,8 @@ string copy_toast_msg
 string default_error_message
 string default_error_msg
 string default_popup_window_title
+string device_admin_description
+string device_admin_explanation
 string dropdown_menu
 string fallback_menu_item_copy_link
 string fallback_menu_item_open_in_browser
@@ -1595,6 +1597,7 @@ styleable View android_theme android_focusable paddingEnd paddingStart theme
 styleable ViewBackgroundHelper android_background backgroundTint backgroundTintMode
 styleable ViewStubCompat android_id android_layout android_inflatedId
 xml accessibility_service_config
+xml app_lock_device_admin
 xml com_android_billingclient_phenotype
 xml data_extraction_rules
 xml image_share_filepaths
