@@ -140,7 +140,7 @@ class LockActivity : FragmentActivity() {
          * Fail closed if protection changed while the lock screen was visible.
          */
         if (!isValidTarget(app, targetPackage)) {
-            app.lockEngine.reset()
+            app.lockEngine.resetTransitionState()
             finishAndRemoveTask()
             return
         }
@@ -161,7 +161,7 @@ class LockActivity : FragmentActivity() {
                 )
 
         if (launchIntent == null) {
-            app.lockEngine.reset()
+            app.lockEngine.resetTransitionState()
             finishAndRemoveTask()
             return
         }

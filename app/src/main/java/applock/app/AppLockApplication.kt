@@ -38,7 +38,7 @@ class AppLockApplication : Application() {
                     Intent.ACTION_SCREEN_OFF -> {
                         if (repository.getSessionRule() == SessionRule.SCREEN_OFF) {
                             repository.clearAllUnlocks()
-                            lockEngine.reset()
+                            lockEngine.resetTransitionState()
                         }
                         repository.refreshProtectionState()
                     }

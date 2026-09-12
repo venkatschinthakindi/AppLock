@@ -166,23 +166,11 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 }
             )
         } catch (_: ActivityNotFoundException) {
-            /*
-             * Fail closed if the lock activity cannot be resolved.
-             *
-             * Do not leave the service permanently stuck in a
-             * "launch in progress" state.
-             */
             lockLaunchInProgress = false
-            app.lockEngine.reset()
+            app.lockEngine.resetTransitionState()
         } catch (_: SecurityException) {
-            /*
-             * OEM/system-level activity launch failure.
-             *
-             * Clear transient launch state so a later transition can
-             * attempt protection again.
-             */
             lockLaunchInProgress = false
-            app.lockEngine.reset()
+            app.lockEngine.resetTransitionState()
         }
     }
 
