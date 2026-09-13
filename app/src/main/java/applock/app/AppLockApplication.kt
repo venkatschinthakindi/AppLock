@@ -24,6 +24,7 @@ class AppLockApplication : Application() {
 
         repository.clearAllUnlocksIfNeededForColdStart()
         repository.refreshProtectionState()
+        lockEngine.resetTransitionState()
 
         if (Build.VERSION.SDK_INT >= 33) {
             getSystemService(AccessibilityManager::class.java)?.addAccessibilityServicesStateChangeListener {

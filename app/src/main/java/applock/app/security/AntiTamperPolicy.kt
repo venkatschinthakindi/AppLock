@@ -26,7 +26,20 @@ object AntiTamperPolicy {
         "com.iqoo.secure",
         "com.transsion.phonemaster",
         "com.motorola.security",
-        "com.nothing.security"
+        "com.nothing.security",
+        // Google / OEM app-management and Digital Wellbeing surfaces.
+        "com.google.android.apps.wellbeing",
+        "com.android.digitalwellbeing",
+        "com.samsung.android.forest",
+        "com.samsung.android.app.parentalcare",
+        // Stores can expose uninstall/update controls.
+        "com.android.vending",
+        "com.sec.android.app.samsungapps",
+        "com.xiaomi.mipicks",
+        "com.heytap.market",
+        "com.vivo.appstore",
+        "com.oneplus.market",
+        "com.huawei.appmarket"
     )
 
     fun isManagementPackage(packageName: String): Boolean {
@@ -36,6 +49,9 @@ object AntiTamperPolicy {
         val lower = packageName.lowercase()
         return lower.contains("packageinstaller") ||
             lower.contains("permissioncontroller") ||
+            lower.contains("digitalwellbeing") ||
+            lower.contains("wellbeing") ||
+            lower.contains("appstore") ||
             lower.endsWith(".settings")
     }
 }

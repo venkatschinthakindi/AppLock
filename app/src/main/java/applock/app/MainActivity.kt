@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
             if (startInfo?.wasForceStopped() == true) {
                 app.repository.markForceStopRecovery()
                 app.lockEngine.resetTransitionState()
+                app.repository.refreshProtectionState()
             }
         }
         app.repository.refreshProtectionState()
