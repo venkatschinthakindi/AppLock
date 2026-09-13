@@ -4,7 +4,7 @@
             "outputFile": "applock.app-mergeDebugResources-59:/values-v23/values-v23.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\chven\\.gradle\\caches\\8.11.1\\transforms\\fd06575393de1875c76970c90735b918\\transformed\\appcompat-1.2.0\\res\\values-v23\\values-v23.xml",
+                    "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\fd06575393de1875c76970c90735b918\\transformed\\appcompat-1.2.0\\res\\values-v23\\values-v23.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,20,34,35,36,39,43,44,45,46",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -23,7 +23,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\chven\\.gradle\\caches\\8.11.1\\transforms\\071579115a907c502224668fbb2d6c3b\\transformed\\work-runtime-2.7.0\\res\\values-v23\\values-v23.xml",
+                    "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\071579115a907c502224668fbb2d6c3b\\transformed\\work-runtime-2.7.0\\res\\values-v23\\values-v23.xml",
                     "from": {
                         "startLines": "2,3",
                         "startColumns": "4,4",
