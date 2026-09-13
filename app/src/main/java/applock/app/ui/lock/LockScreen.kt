@@ -47,6 +47,7 @@ import applock.app.AppLockApplication
 import applock.app.domain.AuthMethod
 import applock.app.engine.LockEngine
 import kotlinx.coroutines.delay
+import applock.app.ads.BannerAd
 
 @Composable
 fun LockScreen(
@@ -172,195 +173,351 @@ fun LockScreen(
     val blocked = app.lockEngine.isBlocked()
 
     Surface(
-        modifier = Modifier
-            .fillMaxSize()
-            .alpha(if (theme.reducedMotion) 1f else 1f),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Box(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    )
-                )
+                .alpha(if (theme.reducedMotion) 1f else 1f),
+            color = MaterialTheme.colorScheme.background
         ) {
             Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 28.dp, vertical = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                modifier = Modifier.fillMaxSize()
             ) {
+
+                /*
+                * SECURITY-CRITICAL LOCK UI
+                *
+                * Everything in this section remains independent
+                * of AdMob, UMP, network and monetization.
+                */
                 Box(
-                    Modifier
-                        .size(92.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
                         .background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = .13f),
-                            CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.background,
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        )
                 ) {
-                    Icon(
-                        Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(44.dp)
-                    )
-                }
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(
+                                horizontal = 28.dp,
+                                vertical = 32.dp
+                            ),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
 
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    "Protected app",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.size(6.dp))
-                    Text("AppLock security check", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                        Box(
+                            Modifier
+                                .size(92.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = .13f),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(44.dp)
+                            )
+                        }
 
-                Spacer(Modifier.height(28.dp))
+                        Spacer(Modifier.height(18.dp))
 
-                when {
-                    blocked -> {
                         Text(
-                            if (lockoutRemaining > 0) {
-                                "Too many attempts. Try again in ${lockoutRemaining}s."
-                            } else {
-                                "Temporarily locked. Try again shortly."
-                            },
-                            color = MaterialTheme.colorScheme.error,
+                            "Protected app",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                    }
 
-                    showBiometric -> {
-                        Button(
-                            onClick = { authenticateBiometric() },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                            shape = RoundedCornerShape(theme.cornerRadius.dp)
+                        Spacer(Modifier.height(6.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Fingerprint, contentDescription = null)
-                            Spacer(Modifier.size(10.dp))
-                            Text("Unlock with biometric")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        if (repo.hasPin()) {
-                            TextButton(onClick = { forcePin = true; error = "" }) {
-                                Text("Use PIN instead")
-                            }
-                        }
-                    }
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
 
-                    showPattern -> {
-                        Text(
-                            "Draw your pattern",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        PatternGrid(onComplete = ::authenticatePattern)
-                    }
+                            Spacer(Modifier.size(6.dp))
 
-                    else -> {
-                        Text(
-                            if (error.isEmpty()) "Enter your PIN" else error,
-                            color = if (error.isEmpty()) {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            }
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            repeat(8) { index ->
-                                Box(
-                                    Modifier
-                                        .size(12.dp)
-                                        .background(
-                                            if (index < pin.length) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.surfaceVariant,
-                                            CircleShape
-                                        )
+                            Text(
+                                "AppLock security check",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(Modifier.height(28.dp))
+
+                        when {
+
+                            blocked -> {
+                                Text(
+                                    if (lockoutRemaining > 0) {
+                                        "Too many attempts. Try again in ${lockoutRemaining}s."
+                                    } else {
+                                        "Temporarily locked. Try again shortly."
+                                    },
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
-                        }
-                        Spacer(Modifier.height(22.dp))
 
-                        listOf(
-                            "1", "2", "3",
-                            "4", "5", "6",
-                            "7", "8", "9",
-                            "⌫", "0", "UNLOCK"
-                        ).chunked(3).forEach { row ->
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                row.forEach { key ->
-                                    when (key) {
-                                        "⌫" -> Button(
-                                            onClick = { pin = pin.dropLast(1); error = "" },
-                                            modifier = Modifier.weight(1f).height(56.dp),
-                                            shape = RoundedCornerShape(theme.cornerRadius.dp)
-                                        ) {
-                                            Icon(Icons.Default.Backspace, contentDescription = "Delete")
+                            showBiometric -> {
+                                Button(
+                                    onClick = {
+                                        authenticateBiometric()
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp),
+                                    shape = RoundedCornerShape(
+                                        theme.cornerRadius.dp
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.Fingerprint,
+                                        contentDescription = null
+                                    )
+
+                                    Spacer(Modifier.size(10.dp))
+
+                                    Text("Unlock with biometric")
+                                }
+
+                                Spacer(Modifier.height(8.dp))
+
+                                if (repo.hasPin()) {
+                                    TextButton(
+                                        onClick = {
+                                            forcePin = true
+                                            error = ""
                                         }
-                                        "UNLOCK" -> Button(
-                                            onClick = ::authenticatePin,
-                                            enabled = pin.length in 4..8,
-                                            modifier = Modifier.weight(1f).height(56.dp),
-                                            shape = RoundedCornerShape(theme.cornerRadius.dp)
-                                        ) {
-                                            Icon(Icons.Default.Check, contentDescription = null)
-                                            Spacer(Modifier.size(5.dp))
-                                            Text("Unlock")
-                                        }
-                                        else -> Button(
-                                            onClick = {
-                                                if (pin.length < 8) {
-                                                    pin += key
-                                                    error = ""
-                                                }
-                                            },
-                                            modifier = Modifier.weight(1f).height(56.dp),
-                                            shape = RoundedCornerShape(theme.cornerRadius.dp)
-                                        ) {
-                                            Text(key, style = MaterialTheme.typography.titleLarge)
-                                        }
+                                    ) {
+                                        Text("Use PIN instead")
                                     }
                                 }
                             }
-                            Spacer(Modifier.height(8.dp))
+
+                            showPattern -> {
+                                Text(
+                                    "Draw your pattern",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(Modifier.height(16.dp))
+
+                                PatternGrid(
+                                    onComplete = ::authenticatePattern
+                                )
+                            }
+
+                            else -> {
+                                Text(
+                                    if (error.isEmpty()) {
+                                        "Enter your PIN"
+                                    } else {
+                                        error
+                                    },
+                                    color = if (error.isEmpty()) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    }
+                                )
+
+                                Spacer(Modifier.height(14.dp))
+
+                                Row(
+                                    horizontalArrangement =
+                                        Arrangement.spacedBy(10.dp)
+                                ) {
+                                    repeat(8) { index ->
+                                        Box(
+                                            Modifier
+                                                .size(12.dp)
+                                                .background(
+                                                    if (index < pin.length) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.surfaceVariant
+                                                    },
+                                                    CircleShape
+                                                )
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(22.dp))
+
+                                listOf(
+                                    "1", "2", "3",
+                                    "4", "5", "6",
+                                    "7", "8", "9",
+                                    "⌫", "0", "UNLOCK"
+                                )
+                                    .chunked(3)
+                                    .forEach { row ->
+
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement =
+                                                Arrangement.spacedBy(10.dp)
+                                        ) {
+
+                                            row.forEach { key ->
+
+                                                when (key) {
+
+                                                    "⌫" -> {
+                                                        Button(
+                                                            onClick = {
+                                                                pin = pin.dropLast(1)
+                                                                error = ""
+                                                            },
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(56.dp),
+                                                            shape =
+                                                                RoundedCornerShape(
+                                                                    theme.cornerRadius.dp
+                                                                )
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.Backspace,
+                                                                contentDescription =
+                                                                    "Delete"
+                                                            )
+                                                        }
+                                                    }
+
+                                                    "UNLOCK" -> {
+                                                        Button(
+                                                            onClick =
+                                                                ::authenticatePin,
+                                                            enabled =
+                                                                pin.length in 4..8,
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(56.dp),
+                                                            shape =
+                                                                RoundedCornerShape(
+                                                                    theme.cornerRadius.dp
+                                                                )
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.Check,
+                                                                contentDescription =
+                                                                    null
+                                                            )
+
+                                                            Spacer(
+                                                                Modifier.size(5.dp)
+                                                            )
+
+                                                            Text("Unlock")
+                                                        }
+                                                    }
+
+                                                    else -> {
+                                                        Button(
+                                                            onClick = {
+                                                                if (pin.length < 8) {
+                                                                    pin += key
+                                                                    error = ""
+                                                                }
+                                                            },
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(56.dp),
+                                                            shape =
+                                                                RoundedCornerShape(
+                                                                    theme.cornerRadius.dp
+                                                                )
+                                                        ) {
+                                                            Text(
+                                                                key,
+                                                                style =
+                                                                    MaterialTheme
+                                                                        .typography
+                                                                        .titleLarge
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(Modifier.height(8.dp))
+                                    }
+
+                                if (
+                                    method == AuthMethod.BIOMETRIC &&
+                                    repo.hasPin()
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            forcePin = false
+                                            error = ""
+                                        }
+                                    ) {
+                                        Text("Use biometric")
+                                    }
+                                }
+                            }
                         }
 
-                        if (method == AuthMethod.BIOMETRIC && repo.hasPin()) {
-                            TextButton(onClick = { forcePin = false; error = "" }) {
-                                Text("Use biometric")
-                            }
+                        if (error.isNotEmpty() && !blocked) {
+                            Spacer(Modifier.height(8.dp))
+
+                            Text(
+                                error,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
 
-                if (error.isNotEmpty() && !blocked) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(error, color = MaterialTheme.colorScheme.error)
-                }
+                /*
+                * ============================================================
+                * NON-BLOCKING REVENUE AREA
+                * ============================================================
+                *
+                * The advertisement is BELOW the authentication surface.
+                *
+                * It can:
+                * - load
+                * - display
+                * - record impressions
+                *
+                * It cannot:
+                * - block authentication
+                * - delay authentication
+                * - replace PIN/pattern/biometric
+                * - determine whether the app unlocks
+                */
+                BannerAd.Content(
+                    enabled = app.isAdsInitialized(),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
-    }
 }
 
 @Composable

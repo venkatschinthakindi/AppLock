@@ -14,13 +14,13 @@
 12    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 12-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:4:5-81
 12-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:4:22-78
-13    <!-- suppress DeprecatedClassUsageInspection -->
-14    <uses-permission android:name="android.permission.USE_FINGERPRINT" /> <!-- Include required permissions for Google Mobile Ads to run -->
-14-->[androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:27:5-74
-14-->[androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:27:22-71
-15    <uses-permission android:name="android.permission.INTERNET" />
-15-->[com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:24:5-67
-15-->[com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:24:22-64
+13    <uses-permission android:name="android.permission.INTERNET" />
+13-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:5-67
+13-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:5:22-64
+14    <!-- suppress DeprecatedClassUsageInspection -->
+15    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+15-->[androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:27:5-74
+15-->[androidx.biometric:biometric:1.1.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\973f27f8c048412997c065ac67b7565e\transformed\biometric-1.1.0\AndroidManifest.xml:27:22-71
 16    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 16-->[com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:25:5-79
 16-->[com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:25:22-76
@@ -129,155 +129,155 @@
 70-->[androidx.core:core:1.16.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\6984bba4a47b6763f6dde1ce96363267\transformed\core-1.16.0\AndroidManifest.xml:26:22-94
 71
 72    <application
-72-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:6:5-84:19
+72-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:5-85:19
 73        android:name="applock.app.AppLockApplication"
-73-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:7:9-43
+73-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:9-43
 74        android:allowBackup="false"
-74-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:8:9-36
+74-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:9:9-36
 75        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 75-->[androidx.core:core:1.16.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\6984bba4a47b6763f6dde1ce96363267\transformed\core-1.16.0\AndroidManifest.xml:28:18-86
 76        android:dataExtractionRules="@xml/data_extraction_rules"
-76-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:9-65
+76-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:11:9-65
 77        android:debuggable="true"
 78        android:extractNativeLibs="false"
 79        android:fullBackupContent="false"
-79-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:9:9-42
+79-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:10:9-42
 80        android:icon="@drawable/ic_app_lock"
-80-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:12:9-45
+80-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:13:9-45
 81        android:label="@string/app_name"
-81-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:11:9-41
+81-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:12:9-41
 82        android:supportsRtl="true"
-82-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:13:9-35
+82-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:9-35
 83        android:testOnly="true"
 84        android:theme="@style/Theme.AppLock"
-84-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:14:9-45
+84-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:9-45
 85        android:usesCleartextTraffic="false" >
-85-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:15:9-45
+85-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:16:9-45
 86        <activity
-86-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:17:9-25:41
+86-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:18:9-26:41
 87            android:name="applock.app.ui.lock.LockActivity"
-87-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:18:13-49
+87-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:19:13-49
 88            android:excludeFromRecents="true"
-88-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:19:13-46
+88-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:20:13-46
 89            android:exported="false"
-89-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:20:13-37
+89-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:21:13-37
 90            android:launchMode="singleTop"
-90-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:21:13-43
+90-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:22:13-43
 91            android:noHistory="false"
-91-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:25:13-38
+91-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:26:13-38
 92            android:screenOrientation="portrait"
-92-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:22:13-49
+92-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:23:13-49
 93            android:showWhenLocked="true"
-93-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:23:13-42
+93-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:24:13-42
 94            android:turnScreenOn="true" />
-94-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:24:13-40
+94-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:25:13-40
 95        <activity
-95-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:27:9-34:43
+95-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:28:9-35:43
 96            android:name="applock.app.ui.lock.SecurityGateActivity"
-96-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:28:13-57
+96-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:29:13-57
 97            android:excludeFromRecents="true"
-97-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:29:13-46
+97-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:30:13-46
 98            android:exported="false"
-98-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:30:13-37
+98-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:31:13-37
 99            android:launchMode="singleTop"
-99-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:31:13-43
+99-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:32:13-43
 100            android:screenOrientation="portrait"
-100-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:32:13-49
+100-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:33:13-49
 101            android:showWhenLocked="true"
-101-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:33:13-42
+101-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:34:13-42
 102            android:turnScreenOn="true" />
-102-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:34:13-40
+102-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:35:13-40
 103        <activity
-103-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:36:9-44:20
+103-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:37:9-45:20
 104            android:name="applock.app.MainActivity"
-104-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:37:13-41
+104-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:38:13-41
 105            android:exported="true"
-105-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:38:13-36
+105-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:39:13-36
 106            android:screenOrientation="unspecified" >
-106-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:39:13-52
+106-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:40:13-52
 107            <intent-filter>
-107-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:40:13-43:29
+107-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:41:13-44:29
 108                <action android:name="android.intent.action.MAIN" />
-108-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:41:17-69
-108-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:41:25-66
+108-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:42:17-69
+108-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:42:25-66
 109
 110                <category android:name="android.intent.category.LAUNCHER" />
-110-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:42:17-77
-110-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:42:27-74
+110-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:43:17-77
+110-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:43:27-74
 111            </intent-filter>
 112        </activity>
 113
 114        <service
-114-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:46:9-57:19
+114-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:47:9-58:19
 115            android:name="applock.app.service.AppDetectionAccessibilityService"
-115-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:47:13-69
+115-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:48:13-69
 116            android:exported="false"
-116-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:48:13-37
+116-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:49:13-37
 117            android:label="@string/accessibility_service_label"
-117-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:49:13-64
+117-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:50:13-64
 118            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
-118-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:50:13-79
+118-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:51:13-79
 119            <intent-filter>
-119-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:51:13-53:29
+119-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:52:13-54:29
 120                <action android:name="android.accessibilityservice.AccessibilityService" />
-120-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:52:17-92
-120-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:52:25-89
+120-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:53:17-92
+120-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:53:25-89
 121            </intent-filter>
 122
 123            <meta-data
-123-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:54:13-56:72
+123-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:55:13-57:72
 124                android:name="android.accessibilityservice"
-124-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:55:17-60
+124-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:56:17-60
 125                android:resource="@xml/accessibility_service_config" />
-125-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:56:17-69
+125-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:57:17-69
 126        </service>
 127
 128        <receiver
-128-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:59:9-65:20
+128-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:60:9-66:20
 129            android:name="applock.app.boot.BootReceiver"
-129-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:60:13-46
+129-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:61:13-46
 130            android:exported="true" >
-130-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:61:13-36
+130-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:62:13-36
 131            <intent-filter>
-131-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:62:13-64:29
+131-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:63:13-65:29
 132                <action android:name="android.intent.action.BOOT_COMPLETED" />
-132-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:63:17-79
-132-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:63:25-76
+132-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:64:17-79
+132-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:64:25-76
 133            </intent-filter>
 134        </receiver>
 135        <receiver
-135-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:67:9-79:20
+135-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:68:9-80:20
 136            android:name="applock.app.security.AppLockDeviceAdminReceiver"
-136-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:68:13-64
+136-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:69:13-64
 137            android:description="@string/device_admin_description"
-137-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:69:13-67
+137-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:70:13-67
 138            android:exported="true"
-138-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:70:13-36
+138-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:71:13-36
 139            android:label="@string/app_name"
-139-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:71:13-45
+139-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:72:13-45
 140            android:permission="android.permission.BIND_DEVICE_ADMIN" >
-140-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:72:13-70
+140-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:73:13-70
 141            <meta-data
-141-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:73:13-75:65
+141-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:74:13-76:65
 142                android:name="android.app.device_admin"
-142-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:74:17-56
+142-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:75:17-56
 143                android:resource="@xml/app_lock_device_admin" />
-143-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:75:17-62
+143-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:76:17-62
 144
 145            <intent-filter>
-145-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:76:13-78:29
+145-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:77:13-79:29
 146                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-146-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:77:17-82
-146-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:77:25-79
+146-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:78:17-82
+146-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:78:25-79
 147            </intent-filter>
 148        </receiver>
 149
 150        <meta-data
-150-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:81:9-83:70
+150-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:82:9-84:70
 151            android:name="com.google.android.gms.ads.APPLICATION_ID"
-151-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:82:13-69
+151-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:83:13-69
 152            android:value="ca-app-pub-1267608571294570~6976756241" />
-152-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:83:13-67
+152-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:84:13-67
 153        <!-- Include the AdActivity and InAppPurchaseActivity configChanges and themes. -->
 154        <activity
 154-->[com.google.android.gms:play-services-ads-api:24.6.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\ad5a5b6d8d084d25126a8dad8182140e\transformed\play-services-ads-api-24.6.0\AndroidManifest.xml:73:9-79:43
@@ -571,8 +571,8 @@
 305            <intent-filter>
 305-->[androidx.work:work-runtime:2.7.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\071579115a907c502224668fbb2d6c3b\transformed\work-runtime-2.7.0\AndroidManifest.xml:116:13-120:29
 306                <action android:name="android.intent.action.BOOT_COMPLETED" />
-306-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:63:17-79
-306-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:63:25-76
+306-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:64:17-79
+306-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:64:25-76
 307                <action android:name="android.intent.action.TIME_SET" />
 307-->[androidx.work:work-runtime:2.7.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\071579115a907c502224668fbb2d6c3b\transformed\work-runtime-2.7.0\AndroidManifest.xml:118:17-73
 307-->[androidx.work:work-runtime:2.7.0] C:\Gradle\bin\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\caches\8.11.1\transforms\071579115a907c502224668fbb2d6c3b\transformed\work-runtime-2.7.0\AndroidManifest.xml:118:25-70

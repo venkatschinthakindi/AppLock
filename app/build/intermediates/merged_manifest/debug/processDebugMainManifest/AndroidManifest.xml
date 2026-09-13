@@ -10,9 +10,9 @@
 
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- suppress DeprecatedClassUsageInspection -->
-    <uses-permission android:name="android.permission.USE_FINGERPRINT" /> <!-- Include required permissions for Google Mobile Ads to run -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- suppress DeprecatedClassUsageInspection -->
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" />
