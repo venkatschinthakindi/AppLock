@@ -59,7 +59,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_FOCUSED -> Unit
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> Unit
             else -> return
         }
 
@@ -67,6 +68,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             ?.toString()
             ?.takeIf { it.isNotBlank() }
             ?: return
+
+        val className = accessibilityEvent.className
 
         /*
          * Our UI is now on top. The lock/security Activity itself owns the
@@ -114,19 +117,31 @@ class AppDetectionAccessibilityService : AccessibilityService() {
          */
         if (
             managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime() &&
-            AntiTamperPolicy.isManagementPackage(pkg)
+            AntiTamperPolicy.isManagementSurface(
+                pkg,
+                accessibilityEvent.eventType,
+                className
+            )
         ) {
             lastExternalPackage = pkg
             return
         }
 
         if (
-            !AntiTamperPolicy.isManagementPackage(pkg)
+            !AntiTamperPolicy.isManagementSurface(
+                pkg,
+                accessibilityEvent.eventType,
+                className
+            )
         ) {
             managementAuthorizedUntilElapsed = 0L
         }
 
         app.repository.refreshProtectionState()
+        AntiTamperManager.enforceStrongProtection(
+            this,
+            app.repository.protectedPackages()
+        )
 
         if (
             lockActivityShownTarget == pkg &&
@@ -144,7 +159,11 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         }
 
         if (
-            AntiTamperPolicy.isManagementPackage(pkg) &&
+            AntiTamperPolicy.isManagementSurface(
+                pkg,
+                accessibilityEvent.eventType,
+                className
+            ) &&
             app.repository.authenticationConfigured() &&
             app.repository.protectedPackages().isNotEmpty()
         ) {
@@ -236,7 +255,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                         addFlags(
                             android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                                 android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                                android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                                android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
                         )
                         putExtra(LockActivity.EXTRA_PACKAGE_NAME, targetPackage)
                     }
@@ -281,7 +301,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                         addFlags(
                             android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                                 android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                                android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                                android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
                         )
                         putExtra(
                             SecurityGateActivity.EXTRA_MANAGEMENT_PACKAGE,
@@ -311,9 +332,11 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         val wm = windowManager ?: return
 
         val overlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
+            // Transparent, but still touch-blocking. This removes the black
+            // transition flash while keeping the fail-closed barrier.
+            setBackgroundColor(Color.TRANSPARENT)
             isClickable = true
-            isFocusable = true
+            isFocusable = false
             setOnTouchListener { _: View, _: MotionEvent -> true }
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
@@ -325,7 +348,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.OPAQUE
+            PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
         }
@@ -365,7 +388,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                     AccessibilityEvent.TYPE_WINDOWS_CHANGED or
                     AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                    AccessibilityEvent.TYPE_VIEW_FOCUSED
+                    AccessibilityEvent.TYPE_VIEW_FOCUSED or
+                    AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
             notificationTimeout = 0L
         }
 
@@ -377,6 +401,10 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         removeProtectionOverlay()
         app.lockEngine.resetTransitionState()
         app.repository.refreshProtectionState()
+        AntiTamperManager.enforceStrongProtection(
+            this,
+            app.repository.protectedPackages()
+        )
     }
 
     override fun onInterrupt() {

@@ -10,6 +10,7 @@ import android.view.accessibility.AccessibilityManager
 import applock.app.data.AppLockRepository
 import applock.app.domain.SessionRule
 import applock.app.engine.LockEngine
+import applock.app.security.AntiTamperManager
 
 class AppLockApplication : Application() {
     lateinit var repository: AppLockRepository
@@ -25,10 +26,15 @@ class AppLockApplication : Application() {
         repository.clearAllUnlocksIfNeededForColdStart()
         repository.refreshProtectionState()
         lockEngine.resetTransitionState()
+        AntiTamperManager.enforceStrongProtection(this, repository.protectedPackages())
 
         if (Build.VERSION.SDK_INT >= 33) {
             getSystemService(AccessibilityManager::class.java)?.addAccessibilityServicesStateChangeListener {
                 repository.refreshProtectionState()
+                AntiTamperManager.enforceStrongProtection(
+                    this,
+                    repository.protectedPackages()
+                )
             }
         }
 
@@ -44,6 +50,10 @@ class AppLockApplication : Application() {
                     }
                     Intent.ACTION_SCREEN_ON -> repository.refreshProtectionState()
                 }
+                AntiTamperManager.enforceStrongProtection(
+                    this@AppLockApplication,
+                    repository.protectedPackages()
+                )
             }
         }, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
