@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
 import applock.app.ui.components.PremiumCard
 import applock.app.ui.components.StatusPill
+import applock.app.security.AntiTamperManager
 
 @Composable
 fun HomeScreen(
@@ -42,19 +43,25 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
+    val deviceAdminEnabled = AntiTamperManager.isDeviceAdminActive(context)
 
     val protectedCount = app.repository.protectedPackages().size
     val service = app.repository.accessibilityEnabled()
     val hasAuth = app.repository.hasCredential()
 
     val status = when {
+        !deviceAdminEnabled -> "Action required"
         !hasAuth -> "Not protected"
         !service -> "Limited protection"
         protectedCount == 0 -> "Ready to configure"
         else -> "Protection active"
     }
 
-    val positive = service && hasAuth && protectedCount > 0
+    val positive =
+        deviceAdminEnabled &&
+            service &&
+            hasAuth &&
+            protectedCount > 0
 
     Column(
         modifier = Modifier
@@ -103,18 +110,21 @@ fun HomeScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = when {
-                        !hasAuth ->
-                            "Choose an authentication method before protecting apps."
+                text = when {
+                    !deviceAdminEnabled ->
+                        "Device protection is not enabled. Enable AppLock device protection to strengthen uninstall and app-management tamper protection."
 
-                        !service ->
-                            "Enable Accessibility access so AppLock can detect protected app launches."
+                    !hasAuth ->
+                        "Choose an authentication method before protecting apps."
 
-                        protectedCount == 0 ->
-                            "Select the apps you want AppLock to protect."
+                    !service ->
+                        "Enable Accessibility access so AppLock can detect protected app launches."
 
-                        else ->
-                            "$protectedCount apps are protected. Authentication stays local-first."
+                    protectedCount == 0 ->
+                        "Select the apps you want AppLock to protect."
+
+                    else ->
+                        "$protectedCount apps are protected. Authentication stays local-first."
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -128,25 +138,43 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                if (!hasAuth) {
-                    Button(
-                        onClick = {
-                            onNavigate?.invoke("security")
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Setup protection")
+                when {
+                    !deviceAdminEnabled -> {
+                        Button(
+                            onClick = {
+                                AntiTamperManager.requestDeviceAdmin(
+                                    context as? android.app.Activity
+                                        ?: return@Button
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Enable Device Protection")
+                        }
                     }
-                } else if (!service) {
-                    Button(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Enable protection")
+
+                    !hasAuth -> {
+                        Button(
+                            onClick = {
+                                onNavigate?.invoke("security")
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Setup protection")
+                        }
+                    }
+
+                    !service -> {
+                        Button(
+                            onClick = {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Enable protection")
+                        }
                     }
                 }
             }

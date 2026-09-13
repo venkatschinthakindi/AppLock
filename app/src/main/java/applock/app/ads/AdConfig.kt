@@ -6,5 +6,5 @@ object AdConfig {
     const val SPONSOR_NAME = "Atoolix"
     const val SPONSOR_URL = "https://atoolix.com"
     // Intentionally false until the final Play/AdMob placement review is complete.
-    const val ENABLE_IN_APP_BANNERS = false
+    const val ENABLE_IN_APP_BANNERS = true
 }
