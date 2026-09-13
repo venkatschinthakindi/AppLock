@@ -13,8 +13,17 @@ import applock.app.AppLockApplication
 object AntiTamperManager {
 
     private const val MANAGEMENT_GRANT_TTL_MS = 15_000L
+
     private const val PREFS = "anti_tamper"
-    private const val PROMPT_SHOWN = "device_admin_prompt_shown"
+
+    /*
+     * Means that the AppLock explanation has already been presented
+     * and the user has made a choice.
+     *
+     * This does NOT mean Device Admin is active.
+     */
+    private const val EXPLANATION_SHOWN =
+        "device_admin_explanation_shown"
 
     @Volatile
     private var managementGrantPackage: String? = null
@@ -32,17 +41,16 @@ object AntiTamperManager {
         context.getSystemService(DevicePolicyManager::class.java)
 
     /**
-     * True when AppLock's Device Administrator is actually active.
-     *
-     * This is the source of truth for the Device Admin protection state.
+     * Returns the actual Android OS Device Admin state.
      */
     fun isDeviceAdminActive(context: Context): Boolean =
         dpm(context)?.isAdminActive(component(context)) == true
 
     /**
-     * True only when AppLock is installed as a Device Owner or Profile Owner.
+     * Returns true when AppLock is configured as a Device Owner
+     * or Profile Owner.
      *
-     * Ordinary Device Admin does NOT provide these stronger DPM capabilities.
+     * Owner mode is stronger than ordinary Device Admin.
      */
     fun isStrongOwner(context: Context): Boolean {
         val manager = dpm(context) ?: return false
@@ -54,8 +62,11 @@ object AntiTamperManager {
     }
 
     /**
-     * Apply the strongest DPM protection available when AppLock is
-     * actually a Device Owner/Profile Owner.
+     * Applies owner-level management restrictions when available.
+     *
+     * Ordinary Device Admin does not provide these owner-level APIs,
+     * so this method safely does nothing unless AppLock is actually
+     * a Device Owner or Profile Owner.
      */
     fun enforceStrongProtection(
         context: Context,
@@ -66,13 +77,10 @@ object AntiTamperManager {
         val manager = dpm(context) ?: return
         val admin = component(context)
 
-        // AppLock protects itself as well as the user's protected apps.
-        val desired = (
-            protectedPackages +
-                context.packageName
-            )
-            .filter { it.isNotBlank() }
-            .toSet()
+        val desired =
+            protectedPackages
+                .filter { it.isNotBlank() }
+                .toSet()
 
         desired.forEach { packageName ->
             if (packageName != context.packageName) {
@@ -97,52 +105,93 @@ object AntiTamperManager {
     }
 
     /**
-     * Automatically request Device Admin once after security setup.
+     * Determines whether the premium Device Admin explanation
+     * should automatically appear as part of the initial security flow.
      *
-     * IMPORTANT:
-     * PROMPT_SHOWN only prevents repeatedly launching the Android
-     * Device Admin screen. It does NOT mean protection is enabled.
+     * Required state:
      *
-     * The actual protection state is always determined by
-     * isDeviceAdminActive().
+     * - onboarding completed
+     * - accessibility disclosure accepted
+     * - authentication configured
+     * - Device Admin not already active
+     * - explanation has not already been handled
      */
-    fun maybeRequestDeviceAdmin(activity: Activity) {
-        // val app = activity.application as AppLockApplication
+    fun shouldShowDeviceAdminExplanation(
+        context: Context
+    ): Boolean {
+        val app =
+            context.applicationContext as? AppLockApplication
+                ?: return false
 
-        // Don't request Device Admin before the user has configured
-        // an AppLock authentication method.
-        // if (!app.repository.authenticationConfigured()) return
+        if (!app.repository.isOnboardingComplete()) {
+            return false
+        }
 
-        // Already enabled: nothing to do.
-        if (isDeviceAdminActive(activity)) return
+        if (!app.repository.disclosureAccepted()) {
+            return false
+        }
 
-        val prefs = activity.getSharedPreferences(
-            PREFS,
-            Context.MODE_PRIVATE
-        )
+        if (!app.repository.authenticationConfigured()) {
+            return false
+        }
 
-        // The user has already seen the Android activation screen.
-        // Do not repeatedly launch Settings.
-        //
-        // ProtectionHealthScreen / Settings will continue showing
-        // the persistent warning and the Enable button.
-        if (prefs.getBoolean(PROMPT_SHOWN, false)) return
+        if (isDeviceAdminActive(context)) {
+            return false
+        }
 
-        prefs.edit()
-            .putBoolean(PROMPT_SHOWN, true)
-            .apply()
-
-        requestDeviceAdmin(activity)
+        return !isDeviceAdminExplanationShown(context)
     }
 
     /**
-     * Explicit user action.
-     *
-     * This can be called repeatedly from Protection Health or Settings
-     * until Device Admin is actually enabled.
+     * Returns whether the user has already been shown the
+     * Device Admin explanation and made a choice.
      */
-    fun requestDeviceAdmin(activity: Activity) {
-        runCatching {
+    fun isDeviceAdminExplanationShown(
+        context: Context
+    ): Boolean {
+        return context
+            .getSharedPreferences(
+                PREFS,
+                Context.MODE_PRIVATE
+            )
+            .getBoolean(
+                EXPLANATION_SHOWN,
+                false
+            )
+    }
+
+    /**
+     * Marks the explanation as handled.
+     *
+     * This is deliberately independent from actual Device Admin state.
+     */
+    fun markDeviceAdminExplanationShown(
+        context: Context
+    ) {
+        context
+            .getSharedPreferences(
+                PREFS,
+                Context.MODE_PRIVATE
+            )
+            .edit()
+            .putBoolean(
+                EXPLANATION_SHOWN,
+                true
+            )
+            .apply()
+    }
+
+    /**
+     * Opens Android's official Device Admin activation screen.
+     *
+     * AppLock does not reproduce or replace Android's system UI.
+     *
+     * Returns true if the Intent was successfully started.
+     */
+    fun requestDeviceAdmin(
+        activity: Activity
+    ): Boolean {
+        return runCatching {
             activity.startActivity(
                 Intent(
                     DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN
@@ -154,26 +203,56 @@ object AntiTamperManager {
 
                     putExtra(
                         DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                        "Enable AppLock device protection to strengthen " +
-                            "uninstall and app-management tamper protection."
+                        "Enable AppLock device protection to add an extra OS-level layer against app-management and tamper changes."
                     )
                 }
             )
-        }
+
+            true
+        }.getOrDefault(false)
     }
 
+    /**
+     * Compatibility method retained for existing callers.
+     *
+     * It intentionally NEVER launches Android's Device Admin UI.
+     *
+     * The premium explanation screen owns the user-facing flow.
+     */
+    fun maybeRequestDeviceAdmin(
+        activity: Activity
+    ) {
+        /*
+         * Intentionally no automatic Device Admin launch.
+         *
+         * Existing callers remain safe because this method is now
+         * a compatibility no-op.
+         */
+    }
+
+    /**
+     * Grants a short-lived management authorization.
+     */
     @Synchronized
-    fun grantManagementAccess(packageName: String) {
+    fun grantManagementAccess(
+        packageName: String
+    ) {
         if (packageName.isBlank()) return
 
         managementGrantPackage = packageName
+
         managementGrantUntilElapsed =
             SystemClock.elapsedRealtime() +
                 MANAGEMENT_GRANT_TTL_MS
     }
 
+    /**
+     * Consumes a previously granted short-lived authorization.
+     */
     @Synchronized
-    fun consumeManagementAccess(packageName: String): Boolean {
+    fun consumeManagementAccess(
+        packageName: String
+    ): Boolean {
         val valid =
             managementGrantPackage == packageName &&
                 SystemClock.elapsedRealtime() <=
@@ -192,10 +271,17 @@ object AntiTamperManager {
         managementGrantUntilElapsed = 0L
     }
 
-    fun openAccessibilitySettings(context: Context) {
+    /**
+     * Opens Android Accessibility settings.
+     */
+    fun openAccessibilitySettings(
+        context: Context
+    ) {
         runCatching {
             context.startActivity(
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                Intent(
+                    Settings.ACTION_ACCESSIBILITY_SETTINGS
+                ).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
@@ -203,17 +289,21 @@ object AntiTamperManager {
     }
 
     /**
-     * Allows the automatic Device Admin request to become available again.
+     * Clears the one-time explanation state.
      *
-     * This is used when Device Admin has actually been disabled.
+     * This is useful for security-flow resets and also allows
+     * a deliberate re-entry into the explanation flow.
      */
-    fun clearPromptState(context: Context) {
-        context.getSharedPreferences(
-            PREFS,
-            Context.MODE_PRIVATE
-        )
+    fun clearPromptState(
+        context: Context
+    ) {
+        context
+            .getSharedPreferences(
+                PREFS,
+                Context.MODE_PRIVATE
+            )
             .edit()
-            .remove(PROMPT_SHOWN)
+            .remove(EXPLANATION_SHOWN)
             .apply()
     }
 }
