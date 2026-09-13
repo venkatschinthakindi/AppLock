@@ -3,6 +3,6 @@
     <string name="app_name">App Lock</string>
     <string name="accessibility_service_label">App Lock protection service</string>
     <string name="accessibility_service_description">Detects protected app window transitions so App Lock can show authentication. It does not retrieve window content.</string>
-    <string name="device_admin_description">AppLock anti-uninstall protection</string>
-    <string name="device_admin_explanation">Enable AppLock device administration to add an Android anti-uninstall safeguard. You can still use AppLock if you decline this optional hardening.</string>
+    <string name="device_admin_description">App Lock device protection</string>
+    <string name="device_admin_explanation">Enable device protection to make uninstall and tamper attempts harder to bypass.</string>
 </resources>

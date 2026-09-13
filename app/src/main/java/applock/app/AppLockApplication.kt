@@ -12,16 +12,13 @@ import applock.app.domain.SessionRule
 import applock.app.engine.LockEngine
 
 class AppLockApplication : Application() {
-
     lateinit var repository: AppLockRepository
         private set
-
     lateinit var lockEngine: LockEngine
         private set
 
     override fun onCreate() {
         super.onCreate()
-
         repository = AppLockRepository(this)
         lockEngine = LockEngine(repository)
 
@@ -29,34 +26,27 @@ class AppLockApplication : Application() {
         repository.refreshProtectionState()
 
         if (Build.VERSION.SDK_INT >= 33) {
-            getSystemService(AccessibilityManager::class.java)
-                ?.addAccessibilityServicesStateChangeListener {
-                    repository.refreshProtectionState()
-                }
+            getSystemService(AccessibilityManager::class.java)?.addAccessibilityServicesStateChangeListener {
+                repository.refreshProtectionState()
+            }
         }
 
-        registerReceiver(
-            object : BroadcastReceiver() {
-                override fun onReceive(
-                    context: Context?,
-                    intent: Intent?
-                ) {
-                    when (intent?.action) {
-                        Intent.ACTION_SCREEN_OFF -> {
-                            if (
-                                repository.getSessionRule() ==
-                                SessionRule.SCREEN_OFF
-                            ) {
-                                repository.clearAllUnlocks()
-                                lockEngine.resetTransitionState()
-                            }
-
-                            repository.refreshProtectionState()
+        registerReceiver(object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        if (repository.getSessionRule() == SessionRule.SCREEN_OFF) {
+                            repository.clearAllUnlocks()
+                            lockEngine.resetTransitionState()
                         }
+                        repository.refreshProtectionState()
                     }
+                    Intent.ACTION_SCREEN_ON -> repository.refreshProtectionState()
                 }
-            },
-            IntentFilter(Intent.ACTION_SCREEN_OFF)
-        )
+            }
+        }, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }, if (Build.VERSION.SDK_INT >= 33) RECEIVER_NOT_EXPORTED else 0)
     }
 }
