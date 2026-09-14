@@ -71,7 +71,6 @@ import applock.app.ui.screens.ProtectedAppsScreen
 import applock.app.ui.screens.SecuritySetupScreen
 import applock.app.ui.screens.SettingsScreen
 import applock.app.ui.screens.SmartLockScreen
-import applock.app.ui.screens.SubscriptionScreen
 import applock.app.ui.theme.AppLockTheme
 
 import kotlinx.coroutines.launch
@@ -598,10 +597,6 @@ fun AppLockRoot() {
                                         SecuritySetupScreen()
                                     }
 
-                                    "pro" -> {
-                                        SubscriptionScreen()
-                                    }
-
                                     "about" -> {
                                         AboutScreen()
                                     }
@@ -667,9 +662,6 @@ private fun screenTitle(
 
         "security" ->
             "Authentication"
-
-        "pro" ->
-            "AppLock Pro"
 
         "about" ->
             "About AppLock"

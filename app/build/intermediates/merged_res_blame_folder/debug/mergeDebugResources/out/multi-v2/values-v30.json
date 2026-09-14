@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "applock.app-mergeDebugResources-59:/values-v30/values-v30.xml",
+            "outputFile": "applock.app-mergeDebugResources-58:/values-v30/values-v30.xml",
             "map": [
                 {
                     "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\70eee17a80335cec1f8e765a1dd5194e\\transformed\\material3-release\\res\\values-v30\\values-v30.xml",

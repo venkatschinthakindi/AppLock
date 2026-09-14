@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "applock.app-mergeDebugResources-59:/values-lt/values-lt.xml",
+            "outputFile": "applock.app-mergeDebugResources-58:/values-lt/values-lt.xml",
             "map": [
                 {
                     "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\b4f3e671d3bacd71a2553b18f2a794f7\\transformed\\ui-release\\res\\values-lt\\values-lt.xml",
@@ -123,23 +123,6 @@
                     }
                 },
                 {
-                    "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\dde12eeef9c5f18c3bb436c28506d941\\transformed\\play-services-base-18.5.0\\res\\values-lt\\values.xml",
-                    "from": {
-                        "startLines": "4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20",
-                        "startColumns": "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0",
-                        "startOffsets": "193,296,444,572,675,824,950,1065,1167,1329,1434,1595,1725,1874,2020,2084,2146",
-                        "endColumns": "102,147,127,102,148,125,114,101,161,104,160,129,148,145,63,61,85",
-                        "endOffsets": "295,443,571,674,823,949,1064,1166,1328,1433,1594,1724,1873,2019,2083,2145,2231"
-                    },
-                    "to": {
-                        "startLines": "39,40,41,42,43,44,45,46,48,49,50,51,52,53,54,55,56",
-                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
-                        "startOffsets": "3889,3996,4148,4280,4387,4540,4670,4789,5054,5220,5329,5494,5628,5781,5931,5999,6065",
-                        "endColumns": "106,151,131,106,152,129,118,105,165,108,164,133,152,149,67,65,89",
-                        "endOffsets": "3991,4143,4275,4382,4535,4665,4784,4890,5215,5324,5489,5623,5776,5926,5994,6060,6150"
-                    }
-                },
-                {
                     "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\f7a95db398dd9ee394d65ea035eb6eb8\\transformed\\material\\res\\values-lt\\values-lt.xml",
                     "from": {
                         "startLines": "2",
@@ -171,6 +154,23 @@
                         "startOffsets": "2874,16207,16295",
                         "endColumns": "86,87,87",
                         "endOffsets": "2956,16290,16378"
+                    }
+                },
+                {
+                    "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\b7e3f02b1ac875ea46a28eeb62a849ab\\transformed\\play-services-base-18.0.0\\res\\values-lt\\values.xml",
+                    "from": {
+                        "startLines": "4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20",
+                        "startColumns": "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0",
+                        "startOffsets": "193,296,444,572,675,824,950,1065,1167,1329,1434,1595,1725,1874,2020,2084,2146",
+                        "endColumns": "102,147,127,102,148,125,114,101,161,104,160,129,148,145,63,61,85",
+                        "endOffsets": "295,443,571,674,823,949,1064,1166,1328,1433,1594,1724,1873,2019,2083,2145,2231"
+                    },
+                    "to": {
+                        "startLines": "39,40,41,42,43,44,45,46,48,49,50,51,52,53,54,55,56",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "3889,3996,4148,4280,4387,4540,4670,4789,5054,5220,5329,5494,5628,5781,5931,5999,6065",
+                        "endColumns": "106,151,131,106,152,129,118,105,165,108,164,133,152,149,67,65,89",
+                        "endOffsets": "3991,4143,4275,4382,4535,4665,4784,4890,5215,5324,5489,5623,5776,5926,5994,6060,6150"
                     }
                 }
             ]

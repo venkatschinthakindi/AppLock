@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "applock.app-mergeDebugResources-59:/values-en-rCA/values-en-rCA.xml",
+            "outputFile": "applock.app-mergeDebugResources-58:/values-en-rCA/values-en-rCA.xml",
             "map": [
                 {
                     "source": "C:\\Gradle\\bin\\wrapper\\dists\\gradle-8.9-bin\\90cnw93cvbtalezasaz0blq0a\\gradle-8.9\\lib\\caches\\8.11.1\\transforms\\ddf2dcc0f2efca96b22011f92106f184\\transformed\\foundation-release\\res\\values-en-rCA\\values-en-rCA.xml",

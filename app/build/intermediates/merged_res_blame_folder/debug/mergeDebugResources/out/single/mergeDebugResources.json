@@ -1,62 +1,62 @@
 [
     {
-        "merged": "applock.app-debug-61:/drawable_ic_app_lock_monochrome.xml.flat",
-        "source": "applock.app-main-63:/drawable/ic_app_lock_monochrome.xml"
+        "merged": "applock.app-debug-60:/drawable-nodpi_atoolix_logo.png.flat",
+        "source": "applock.app-main-62:/drawable-nodpi/atoolix_logo.png"
     },
     {
-        "merged": "applock.app-debug-61:/drawable_ic_app_lock_background.xml.flat",
-        "source": "applock.app-main-63:/drawable/ic_app_lock_background.xml"
+        "merged": "applock.app-debug-60:/mipmap-xhdpi_ic_app_lock.png.flat",
+        "source": "applock.app-main-62:/mipmap-xhdpi/ic_app_lock.png"
     },
     {
-        "merged": "applock.app-debug-61:/drawable-nodpi_ic_app_lock_foreground.png.flat",
-        "source": "applock.app-main-63:/drawable-nodpi/ic_app_lock_foreground.png"
+        "merged": "applock.app-debug-60:/mipmap-hdpi_ic_app_lock.png.flat",
+        "source": "applock.app-main-62:/mipmap-hdpi/ic_app_lock.png"
     },
     {
-        "merged": "applock.app-debug-61:/mipmap-xxxhdpi_ic_app_lock.png.flat",
-        "source": "applock.app-main-63:/mipmap-xxxhdpi/ic_app_lock.png"
+        "merged": "applock.app-debug-60:/xml_data_extraction_rules.xml.flat",
+        "source": "applock.app-main-62:/xml/data_extraction_rules.xml"
     },
     {
-        "merged": "applock.app-debug-61:/mipmap-xhdpi_ic_app_lock.png.flat",
-        "source": "applock.app-main-63:/mipmap-xhdpi/ic_app_lock.png"
+        "merged": "applock.app-debug-60:/mipmap-xxhdpi_ic_app_lock.png.flat",
+        "source": "applock.app-main-62:/mipmap-xxhdpi/ic_app_lock.png"
     },
     {
-        "merged": "applock.app-debug-61:/drawable_ic_app_lock.xml.flat",
-        "source": "applock.app-main-63:/drawable/ic_app_lock.xml"
+        "merged": "applock.app-debug-60:/drawable_ic_app_lock.xml.flat",
+        "source": "applock.app-main-62:/drawable/ic_app_lock.xml"
     },
     {
-        "merged": "applock.app-debug-61:/xml_data_extraction_rules.xml.flat",
-        "source": "applock.app-main-63:/xml/data_extraction_rules.xml"
+        "merged": "applock.app-debug-60:/xml_accessibility_service_config.xml.flat",
+        "source": "applock.app-main-62:/xml/accessibility_service_config.xml"
     },
     {
-        "merged": "applock.app-debug-61:/xml_accessibility_service_config.xml.flat",
-        "source": "applock.app-main-63:/xml/accessibility_service_config.xml"
+        "merged": "applock.app-debug-60:/mipmap-xxxhdpi_ic_app_lock.png.flat",
+        "source": "applock.app-main-62:/mipmap-xxxhdpi/ic_app_lock.png"
     },
     {
-        "merged": "applock.app-debug-61:/mipmap-anydpi-v26_ic_app_lock.xml.flat",
-        "source": "applock.app-main-63:/mipmap-anydpi-v26/ic_app_lock.xml"
+        "merged": "applock.app-debug-60:/drawable_ic_app_lock_background.xml.flat",
+        "source": "applock.app-main-62:/drawable/ic_app_lock_background.xml"
     },
     {
-        "merged": "applock.app-debug-61:/xml_app_lock_device_admin.xml.flat",
-        "source": "applock.app-main-63:/xml/app_lock_device_admin.xml"
+        "merged": "applock.app-debug-60:/drawable_ic_app_lock_monochrome.xml.flat",
+        "source": "applock.app-main-62:/drawable/ic_app_lock_monochrome.xml"
     },
     {
-        "merged": "applock.app-debug-61:/drawable-nodpi_ic_app_lock_monochrome.png.flat",
-        "source": "applock.app-main-63:/drawable-nodpi/ic_app_lock_monochrome.png"
+        "merged": "applock.app-debug-60:/mipmap-anydpi-v26_ic_app_lock.xml.flat",
+        "source": "applock.app-main-62:/mipmap-anydpi-v26/ic_app_lock.xml"
     },
     {
-        "merged": "applock.app-debug-61:/mipmap-xxhdpi_ic_app_lock.png.flat",
-        "source": "applock.app-main-63:/mipmap-xxhdpi/ic_app_lock.png"
+        "merged": "applock.app-debug-60:/drawable-nodpi_ic_app_lock_foreground.png.flat",
+        "source": "applock.app-main-62:/drawable-nodpi/ic_app_lock_foreground.png"
     },
     {
-        "merged": "applock.app-debug-61:/mipmap-hdpi_ic_app_lock.png.flat",
-        "source": "applock.app-main-63:/mipmap-hdpi/ic_app_lock.png"
+        "merged": "applock.app-debug-60:/drawable-nodpi_ic_app_lock_monochrome.png.flat",
+        "source": "applock.app-main-62:/drawable-nodpi/ic_app_lock_monochrome.png"
     },
     {
-        "merged": "applock.app-debug-61:/mipmap-mdpi_ic_app_lock.png.flat",
-        "source": "applock.app-main-63:/mipmap-mdpi/ic_app_lock.png"
+        "merged": "applock.app-debug-60:/xml_app_lock_device_admin.xml.flat",
+        "source": "applock.app-main-62:/xml/app_lock_device_admin.xml"
     },
     {
-        "merged": "applock.app-debug-61:/drawable-nodpi_atoolix_logo.png.flat",
-        "source": "applock.app-main-63:/drawable-nodpi/atoolix_logo.png"
+        "merged": "applock.app-debug-60:/mipmap-mdpi_ic_app_lock.png.flat",
+        "source": "applock.app-main-62:/mipmap-mdpi/ic_app_lock.png"
     }
 ]

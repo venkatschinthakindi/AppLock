@@ -116,11 +116,6 @@ fun AppDrawer(
                     "settings",
                     "Settings",
                     Icons.Default.Settings
-                ),
-                Triple(
-                    "pro",
-                    "Upgrade to Pro",
-                    Icons.Default.Star
                 )
             )
 
