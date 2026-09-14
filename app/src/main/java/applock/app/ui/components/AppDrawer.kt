@@ -47,6 +47,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import applock.app.R
+import android.graphics.drawable.Drawable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.core.graphics.drawable.toBitmap
 
 private const val PRIVACY_POLICY_URL =
     "https://thrinetratech.in/applock-privacy-policy"
@@ -278,24 +283,58 @@ fun AppDrawer(
 }
 
 @Composable
+private fun AppLockIconPainter(): BitmapPainter {
+    val context = LocalContext.current
+
+    return remember(context) {
+        val drawable: Drawable =
+            context.packageManager.getApplicationIcon(
+                context.applicationInfo
+            )
+
+        BitmapPainter(
+            drawable
+                .toBitmap(
+                    width = 192,
+                    height = 192
+                )
+                .asImageBitmap()
+        )
+    }
+}
+
+@Composable
 private fun DrawerHeader() {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "AppLock – Private App Locker",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
+        Image(
+            painter = AppLockIconPainter(),
+            contentDescription = "AppLock logo",
+            modifier = Modifier
+                .size(52.dp)
         )
 
-        Text(
-            text = "Fast protection. Beautiful unlocking.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text(
+                text = "AppLock – Private App Locker",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Fast protection. Beautiful unlocking.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

@@ -47,6 +47,39 @@ import applock.app.ui.screens.SmartLockScreen
 import applock.app.ui.screens.SubscriptionScreen
 import applock.app.ui.theme.AppLockTheme
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import android.graphics.drawable.Drawable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.core.graphics.drawable.toBitmap
+
+@Composable
+private fun AppLockIconPainter(): BitmapPainter {
+    val context = LocalContext.current
+
+    return remember(context) {
+        val drawable: Drawable =
+            context.packageManager.getApplicationIcon(
+                context.applicationInfo
+            )
+
+        BitmapPainter(
+            drawable
+                .toBitmap(
+                    width = 192,
+                    height = 192
+                )
+                .asImageBitmap()
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,23 +219,34 @@ fun AppLockRoot() {
                                 },
 
                                 navigationIcon = {
-
-                                    IconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                drawerState.open()
-                                            }
-                                        }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    drawerState.open()
+                                                }
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Menu,
+                                                contentDescription = "Open menu"
+                                            )
+                                        }
 
-                                        Icon(
-                                            imageVector =
-                                                Icons.Default.Menu,
-                                            contentDescription =
-                                                "Open menu"
+                                        Image(
+                                            painter = AppLockIconPainter(),
+                                            contentDescription = "AppLock logo",
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                        )
+
+                                        Spacer(
+                                            modifier = Modifier.width(8.dp)
                                         )
                                     }
-                                }
+                                },
                             )
                         }
                     ) { paddingValues ->

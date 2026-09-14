@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxSize
 
 @Composable
 fun OnboardingScreen(
@@ -70,6 +71,7 @@ fun OnboardingScreen(
 
     Box(
         modifier = Modifier
+            .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -78,12 +80,12 @@ fun OnboardingScreen(
                     )
                 )
             )
-            .safeDrawingPadding()
-            .navigationBarsPadding()
     ) {
-
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .navigationBarsPadding(),
 
             horizontalAlignment =
                 Alignment.CenterHorizontally,

@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
+import androidx.compose.foundation.layout.fillMaxSize
 
 @Composable
 fun AccessibilityDisclosureScreen(
@@ -59,28 +60,22 @@ fun AccessibilityDisclosureScreen(
     }
 
     Surface(
-        modifier =
-            Modifier.safeDrawingPadding()
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
                 .navigationBarsPadding(),
 
-        color =
-            MaterialTheme.colorScheme.background
-    ) {
+            contentPadding = PaddingValues(
+                horizontal = 22.dp,
+                vertical = 22.dp
+            ),
 
-        LazyColumn(
-            modifier =
-                Modifier.fillMaxWidth(),
-
-            contentPadding =
-                PaddingValues(
-                    horizontal = 22.dp,
-                    vertical = 22.dp
-                ),
-
-            verticalArrangement =
-                Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-
             item {
 
                 Column(
