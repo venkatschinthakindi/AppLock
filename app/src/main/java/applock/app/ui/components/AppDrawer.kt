@@ -175,7 +175,7 @@ private fun DrawerHeader() {
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Text(
-            text = "AppLock",
+            text = "AppLock – Private App Locker",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )

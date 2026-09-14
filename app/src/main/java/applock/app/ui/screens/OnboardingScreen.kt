@@ -144,7 +144,7 @@ fun OnboardingScreen(
                     )
 
                     Text(
-                        text = "AppLock",
+                        text = "AppLock – Private App Locker",
                         style =
                             MaterialTheme
                                 .typography

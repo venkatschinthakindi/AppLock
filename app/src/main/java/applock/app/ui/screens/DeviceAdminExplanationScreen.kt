@@ -90,7 +90,7 @@ fun DeviceAdminExplanationScreen(
 
             Column {
                 Text(
-                    text = "AppLock",
+                    text = "AppLock – Private App Locker",
                     style = typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )

@@ -2,7 +2,7 @@
 <resources>
     <string name="accessibility_service_description">Detects protected app window transitions so App Lock can show authentication. It does not retrieve window content.</string>
     <string name="accessibility_service_label">App Lock protection service</string>
-    <string name="app_name">App Lock</string>
+    <string name="app_name">AppLock – Private App Locker</string>
     <string name="device_admin_description">App Lock device protection</string>
     <string name="device_admin_explanation">Enable device protection to make uninstall and tamper attempts harder to bypass.</string>
     <style name="Theme.AppLock" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowActionModeOverlay">true</item><item name="android:windowNoTitle">true</item><item name="android:windowIsTranslucent">false</item><item name="android:windowDisablePreview">true</item><item name="android:windowBackground">@android:color/black</item><item name="android:colorAccent">#6C63FF</item></style>

@@ -350,7 +350,7 @@ private fun screenTitle(
             "About AppLock"
 
         else ->
-            "AppLock"
+            "AppLock – Private App Locker"
     }
 
 private fun Context.findActivity(): Activity? {
