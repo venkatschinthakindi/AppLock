@@ -9,12 +9,7 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="722df63b-08c1-4a14-8254-1bd9cf365b21" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.github/workflows/build-release.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/build-release.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/app/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ads/AdConfig.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ads/AdConfig.kt" afterDir="false" />
-    </list>
+    <list default="true" id="722df63b-08c1-4a14-8254-1bd9cf365b21" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

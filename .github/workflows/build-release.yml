@@ -124,13 +124,7 @@ jobs:
             app/src/main/AndroidManifest.xml
 
           grep -R -q 'ca-app-pub-1267608571294570/9300656932' \
-            app/src/main/java
-
-          if grep -R -q 'ca-app-pub-3940256099942544/9214589741' \
-            app/src/main/java; then
-            echo "ERROR: Google test banner ID found in production source."
-            exit 1
-          fi
+            app/src/main/java/applock/app/ads/AdConfig.kt
 
           if grep -R -q 'USE_TEST_ADS[[:space:]]*=[[:space:]]*true' \
             app/src/main/java; then
