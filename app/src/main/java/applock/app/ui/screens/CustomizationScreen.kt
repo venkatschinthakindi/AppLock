@@ -2,14 +2,19 @@ package applock.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -45,24 +50,40 @@ fun CustomizationScreen() {
     )
 
     Column(
-        Modifier.padding(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .imePadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            "One theme engine, everywhere",
-            style = MaterialTheme.typography.headlineSmall
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+        ) {
+            Text(
+                text = "One theme engine, everywhere",
+                style = MaterialTheme.typography.headlineSmall
+            )
 
-        Text(
-            "Changes apply consistently to the dashboard, settings and lock experience.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            Text(
+                text = "Changes apply consistently to the dashboard, settings and lock experience.",
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
 
         PremiumCard(
             title = "Theme mode",
             subtitle = "Light, dark or follow Android"
         ) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ThemeMode.entries.forEach { mode ->
@@ -90,13 +111,16 @@ fun CustomizationScreen() {
             subtitle = "Used for primary actions and status emphasis"
         ) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 accents.forEach { (value, label) ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        androidx.compose.foundation.layout.Box(
+                        Box(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
@@ -109,7 +133,8 @@ fun CustomizationScreen() {
                         )
 
                         Text(
-                            label,
+                            text = label,
+                            modifier = Modifier.padding(top = 4.dp),
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
@@ -129,12 +154,14 @@ fun CustomizationScreen() {
                     }
                 },
                 valueRange = 10f..28f,
-                steps = 8
+                steps = 8,
+                modifier = Modifier.fillMaxWidth()
             )
 
             Text(
-                "${theme.cornerRadius.toInt()} dp",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "${theme.cornerRadius.toInt()} dp",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
             )
         }
 
@@ -143,6 +170,9 @@ fun CustomizationScreen() {
             subtitle = "Animation beautifies the experience but never delays authentication"
         ) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 AnimationStyle.entries.forEach { style ->
@@ -172,20 +202,26 @@ fun CustomizationScreen() {
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.size(4.dp))
 
             Row(
-                Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(
-                    Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 16.dp)
                 ) {
-                    Text("Reduced motion")
+                    Text(
+                        text = "Reduced motion",
+                        style = MaterialTheme.typography.titleSmall
+                    )
 
                     Text(
-                        "Prefer minimal movement",
+                        text = "Prefer minimal movement",
+                        modifier = Modifier.padding(top = 2.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

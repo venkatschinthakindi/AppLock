@@ -4,14 +4,19 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Home
@@ -46,47 +51,76 @@ fun AppDrawer(
     onDestination: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
 
     ModalDrawerSheet {
-
         Column(
-            modifier = Modifier.padding(top = 22.dp)
+            modifier = Modifier
+                .fillMaxHeight()
+                .verticalScroll(scrollState)
+                .navigationBarsPadding()
+                .padding(top = 18.dp, bottom = 18.dp)
         ) {
+            DrawerHeader()
 
-            Text(
-                text = "AppLock",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp)
+            Spacer(
+                modifier = Modifier.height(14.dp)
             )
 
-            Text(
-                text = "Fast protection. Beautiful unlocking.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(
-                    horizontal = 20.dp,
-                    vertical = 4.dp
+            val items = listOf(
+                Triple(
+                    "home",
+                    "Home",
+                    Icons.Default.Home
+                ),
+                Triple(
+                    "apps",
+                    "Protected apps",
+                    Icons.Default.Lock
+                ),
+                Triple(
+                    "health",
+                    "Protection Health",
+                    Icons.Default.HealthAndSafety
+                ),
+                Triple(
+                    "smart",
+                    "Smart Lock",
+                    Icons.Default.Timer
+                ),
+                Triple(
+                    "custom",
+                    "Customization",
+                    Icons.Default.Palette
+                ),
+                Triple(
+                    "security",
+                    "Authentication",
+                    Icons.Default.Security
+                ),
+                Triple(
+                    "settings",
+                    "Settings",
+                    Icons.Default.Settings
+                ),
+                Triple(
+                    "pro",
+                    "Upgrade to Pro",
+                    Icons.Default.Star
                 )
             )
 
-            Spacer(Modifier.height(14.dp))
-
-            val items = listOf(
-                Triple("home", "Home", Icons.Default.Home),
-                Triple("apps", "Protected apps", Icons.Default.Lock),
-                Triple("health", "Protection Health", Icons.Default.HealthAndSafety),
-                Triple("smart", "Smart Lock", Icons.Default.Timer),
-                Triple("custom", "Customization", Icons.Default.Palette),
-                Triple("security", "Authentication", Icons.Default.Security),
-                Triple("settings", "Settings", Icons.Default.Settings),
-                Triple("pro", "Upgrade to Pro", Icons.Default.Star)
-            )
-
             items.forEach { (key, label, icon) ->
-
                 NavigationDrawerItem(
                     label = {
-                        Text(label)
+                        Text(
+                            text = label,
+                            fontWeight = if (currentDestination == key) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Normal
+                            }
+                        )
                     },
                     icon = {
                         Icon(
@@ -98,7 +132,10 @@ fun AppDrawer(
                     onClick = {
                         onDestination(key)
                     },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier.padding(
+                        horizontal = 12.dp,
+                        vertical = 2.dp
+                    )
                 )
             }
 
@@ -109,101 +146,149 @@ fun AppDrawer(
                 )
             )
 
-            Text(
-                text = "SPONSORED",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor =
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-                )
-            ) {
-
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-
-                        Card(
-                            modifier = Modifier.size(68.dp),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
+            SponsorSection(
+                onVisit = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://atoolix.com")
                             )
-                        ) {
-                            Image(
-                                painter = painterResource(
-                                    id = R.drawable.atoolix_logo
-                                ),
-                                contentDescription = "Atoolix",
-                                modifier = Modifier
-                                    .size(68.dp)
-                                    .padding(7.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-
-                            Text(
-                                text = "Atoolix",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Text(
-                                text = "Practical online tools",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "Useful tools for everyday tasks, available online.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://atoolix.com")
-                                    )
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("Visit Atoolix")
+                        )
                     }
                 }
-            }
+            )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(
+                modifier = Modifier.height(6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawerHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Text(
+            text = "AppLock",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Text(
+            text = "Fast protection. Beautiful unlocking.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SponsorSection(
+    onVisit: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "SPONSORED",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    .copy(alpha = 0.72f)
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 1.dp
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SponsorIdentity()
+
+                Text(
+                    text = "Useful tools for everyday tasks, available online.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Button(
+                    onClick = onVisit,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Visit Atoolix")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SponsorIdentity() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card(
+            modifier = Modifier.size(64.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(
+                        id = R.drawable.atoolix_logo
+                    ),
+                    contentDescription = "Atoolix",
+                    modifier = Modifier
+                        .size(64.dp)
+                        .padding(7.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "Atoolix",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Practical online tools",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

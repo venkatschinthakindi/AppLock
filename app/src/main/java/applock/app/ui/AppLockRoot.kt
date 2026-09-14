@@ -1,9 +1,13 @@
 package applock.app.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -43,9 +47,6 @@ import applock.app.ui.screens.SmartLockScreen
 import applock.app.ui.screens.SubscriptionScreen
 import applock.app.ui.theme.AppLockTheme
 import kotlinx.coroutines.launch
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,8 +100,7 @@ fun AppLockRoot() {
      * Start the advertising/privacy flow only after the
      * first-run onboarding/disclosure flow is complete.
      *
-     * This avoids placing an advertising consent dialog on
-     * top of the security disclosure itself.
+     * Authentication and protection do not depend on this.
      */
     LaunchedEffect(firstRunStep) {
 
@@ -194,6 +194,7 @@ fun AppLockRoot() {
                                             }
                                         }
                                     ) {
+
                                         Icon(
                                             imageVector =
                                                 Icons.Default.Menu,
@@ -209,11 +210,16 @@ fun AppLockRoot() {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(
-                                    paddingValues
-                                )
+                                .padding(paddingValues)
                         ) {
 
+                            /*
+                             * The destination itself owns its scrolling.
+                             *
+                             * Do not put a verticalScroll() here because
+                             * several destinations already use LazyColumn
+                             * or their own scroll containers.
+                             */
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -223,6 +229,7 @@ fun AppLockRoot() {
                                 when (destination) {
 
                                     "home" -> {
+
                                         HomeScreen(
                                             onNavigate = {
                                                 target ->
@@ -258,8 +265,6 @@ fun AppLockRoot() {
 
                                     /*
                                      * Pro explicitly remains ad-free.
-                                     * The current SubscriptionScreen already
-                                     * advertises this as a Pro benefit.
                                      */
                                     "pro" -> {
                                         SubscriptionScreen()
@@ -270,6 +275,7 @@ fun AppLockRoot() {
                                     }
 
                                     else -> {
+
                                         HomeScreen(
                                             onNavigate = {
                                                 target ->
@@ -283,16 +289,28 @@ fun AppLockRoot() {
 
                             /*
                              * Every normal AppLock surface gets the
-                             * same centralized banner.
+                             * centralized banner.
                              *
-                             * Pro is intentionally excluded.
+                             * Pro remains intentionally ad-free.
+                             *
+                             * navigationBarsPadding() prevents the
+                             * banner from being hidden behind Android's
+                             * navigation/gesture area.
                              */
                             if (destination != "pro") {
-                                BannerAd.Content(
-                                    enabled = adsReady,
-                                    modifier =
-                                        Modifier.fillMaxWidth()
-                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                ) {
+
+                                    BannerAd.Content(
+                                        enabled = adsReady,
+                                        modifier =
+                                            Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
                     }

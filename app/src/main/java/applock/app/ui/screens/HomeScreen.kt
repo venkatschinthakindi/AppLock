@@ -47,6 +47,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
 import applock.app.security.AntiTamperManager
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @Composable
 fun HomeScreen(
@@ -121,6 +124,8 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .background(
                         Brush.verticalGradient(
                             listOf(
