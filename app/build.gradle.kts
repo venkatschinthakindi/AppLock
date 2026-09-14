@@ -55,6 +55,7 @@ android {
 
     buildTypes {
         release {
+            isMinifyEnabled = true
             // Use the release signing configuration only when credentials
             // have been supplied by the environment.
             val keystoreFile = System.getenv("KEYSTORE_FILE")
@@ -67,8 +68,12 @@ android {
                 !keystorePassword.isNullOrBlank() &&
                 !keyAliasValue.isNullOrBlank() &&
                 !keyPasswordValue.isNullOrBlank()
-            ) {
+            )  {
                 signingConfig = signingConfigs.getByName("release")
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+                )
             }
         }
     }
