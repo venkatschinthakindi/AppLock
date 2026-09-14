@@ -3,18 +3,18 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
-    
+
     <application
         android:name=".AppLockApplication"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="@string/app_name"
-        android:icon="@drawable/ic_app_lock"
+        android:icon="@mipmap/ic_app_lock"
+        android:roundIcon="@mipmap/ic_app_lock"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppLock"
         android:usesCleartextTraffic="false">
-
         <activity
             android:name=".ui.lock.LockActivity"
             android:excludeFromRecents="true"
@@ -24,7 +24,6 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:noHistory="false" />
-
         <activity
             android:name=".ui.lock.SecurityGateActivity"
             android:excludeFromRecents="true"
@@ -33,7 +32,6 @@
             android:screenOrientation="portrait"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -43,7 +41,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <service
             android:name=".service.AppDetectionAccessibilityService"
             android:exported="false"
@@ -56,7 +53,6 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
-
         <receiver
             android:name=".boot.BootReceiver"
             android:exported="true">
@@ -64,7 +60,6 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-
         <receiver
             android:name=".security.AppLockDeviceAdminReceiver"
             android:description="@string/device_admin_description"
@@ -78,7 +73,6 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
-
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-1267608571294570~6976756241" />
