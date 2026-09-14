@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       # ------------------------------------------------------------
       # CHECKOUT
       # ------------------------------------------------------------
@@ -44,7 +45,7 @@ jobs:
       # ------------------------------------------------------------
       # VERSIONING
       #
-      # Policy:
+      # Version naming policy:
       #
       # First release:
       #   1.0.0
@@ -56,12 +57,8 @@ jobs:
       #   1.x.x -> 2.0.0
       #   2.x.x -> 3.0.0
       #
-      # Version code:
-      #   GitHub Actions run number.
-      #
-      # IMPORTANT:
-      #   The first release's versionCode must be greater than
-      #   any versionCode already uploaded to Google Play.
+      # Android versionCode:
+      #   GitHub Actions workflow run number.
       # ------------------------------------------------------------
       - name: Calculate release version
         id: version
@@ -77,7 +74,7 @@ jobs:
           echo "Current month: ${CURRENT_YEAR_MONTH}"
           echo "Base release month: ${BASE_YEAR_MONTH}"
 
-          # Get newest semantic-version release tag.
+          # Find newest valid semantic-version release tag.
           LATEST_TAG="$(
             git tag --list 'v*' --sort=-version:refname |
             grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
@@ -98,7 +95,7 @@ jobs:
             LATEST_VERSION="${LATEST_TAG#v}"
 
             if [[ ! "${LATEST_VERSION}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              echo "ERROR: Latest tag '${LATEST_TAG}' is not valid semver."
+              echo "ERROR: Latest tag '${LATEST_TAG}' is not valid semantic versioning."
               echo "Expected format: v1.0.0"
               exit 1
             fi
@@ -120,12 +117,14 @@ jobs:
 
             if [[ "${LAST_YEAR_MONTH}" == "${CURRENT_YEAR_MONTH}" ]]; then
 
+              # Same month -> increment patch.
               MAJOR="${LAST_MAJOR}"
               MINOR="${LAST_MINOR}"
               PATCH=$((LAST_PATCH + 1))
 
             else
 
+              # New month -> increment major and reset minor/patch.
               MAJOR=$((LAST_MAJOR + 1))
               MINOR=0
               PATCH=0
@@ -135,17 +134,16 @@ jobs:
 
           VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}"
 
-          # GitHub Actions run number is monotonically increasing
-          # for this workflow.
+          # GitHub Actions run number.
           VERSION_CODE="${GITHUB_RUN_NUMBER}"
 
           if [[ ! "${VERSION_CODE}" =~ ^[0-9]+$ ]]; then
-            echo "ERROR: Invalid versionCode: ${VERSION_CODE}"
+            echo "ERROR: Invalid Android versionCode: ${VERSION_CODE}"
             exit 1
           fi
 
           echo "----------------------------------------"
-          echo "Release version : ${VERSION_NAME}"
+          echo "Release version: ${VERSION_NAME}"
           echo "Android versionCode: ${VERSION_CODE}"
           echo "----------------------------------------"
 
@@ -189,7 +187,7 @@ jobs:
               exit 1
             }
 
-          # Test ads must NOT be selected for production.
+          # Test ads must not be selected for production.
           if grep -R -q \
             'USE_TEST_ADS[[:space:]]*=[[:space:]]*true' \
             app/src/main/java; then
@@ -212,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Applying:"
+          echo "Applying release version:"
           echo "  versionName = ${VERSION_NAME}"
           echo "  versionCode = ${VERSION_CODE}"
 
@@ -260,8 +258,7 @@ jobs:
           path.write_text(text, encoding="utf-8")
 
           print(
-              f"Updated Gradle to "
-              f"versionName={version_name}, "
+              f"Updated versionName={version_name}, "
               f"versionCode={version_code}"
           )
           PY
@@ -303,7 +300,7 @@ jobs:
             exit 1
           fi
 
-          echo "Signing secrets are configured."
+          echo "All signing secrets are configured."
 
       # ------------------------------------------------------------
       # RESTORE PLAY UPLOAD KEYSTORE
@@ -366,7 +363,7 @@ jobs:
           ls -lh "${AAB}"
 
       # ------------------------------------------------------------
-      # UPLOAD AAB AS GITHUB ARTIFACT
+      # UPLOAD AAB TO GITHUB ACTIONS
       # ------------------------------------------------------------
       - name: Upload production AAB
         uses: actions/upload-artifact@v4
@@ -377,7 +374,7 @@ jobs:
           retention-days: 90
 
       # ------------------------------------------------------------
-      # CREATE RELEASE TAG
+      # CREATE GIT RELEASE TAG
       # ------------------------------------------------------------
       - name: Create release tag
         shell: bash
@@ -403,7 +400,7 @@ jobs:
           echo "Created release tag ${TAG}"
 
       # ------------------------------------------------------------
-      # REMOVE SIGNING MATERIAL
+      # CLEAN SIGNING MATERIAL
       # ------------------------------------------------------------
       - name: Remove release keystore
         if: always()
