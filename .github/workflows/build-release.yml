@@ -305,34 +305,55 @@ jobs:
       # ------------------------------------------------------------
       # RESTORE PLAY UPLOAD KEYSTORE
       # ------------------------------------------------------------
+      
+            # ------------------------------------------------------------
+      # RESTORE PLAY UPLOAD KEYSTORE TO RUNNER TEMP DIRECTORY
+      # ------------------------------------------------------------
       - name: Restore release keystore
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_FILE: ${{ runner.temp }}/applock-release.keystore
         run: |
           set -euo pipefail
 
-          echo "${KEYSTORE_BASE64}" |
-            base64 --decode > app/release-upload.jks
+          if [[ -z "${KEYSTORE_BASE64}" ]]; then
+            echo "ERROR: KEYSTORE_BASE64 secret is empty."
+            exit 1
+          fi
 
-          if [[ ! -s app/release-upload.jks ]]; then
+          printf '%s' "${KEYSTORE_BASE64}" |
+            base64 --decode > "${KEYSTORE_FILE}"
+
+          if [[ ! -s "${KEYSTORE_FILE}" ]]; then
             echo "ERROR: Release keystore is empty."
             exit 1
           fi
 
-          echo "Release keystore restored."
+          echo "Release keystore restored to temporary runner storage."
+          echo "KEYSTORE_FILE=${KEYSTORE_FILE}" >> "${GITHUB_ENV}"  
 
       # ------------------------------------------------------------
       # BUILD SIGNED PRODUCTION AAB
       # ------------------------------------------------------------
+            # ------------------------------------------------------------
+      # BUILD SIGNED PRODUCTION AAB
+      # ------------------------------------------------------------
+      
       - name: Build production AAB
         shell: bash
         env:
+          KEYSTORE_FILE: ${{ runner.temp }}/applock-release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
+
+          if [[ ! -f "${KEYSTORE_FILE}" ]]; then
+            echo "ERROR: Signing keystore was not restored."
+            exit 1
+          fi
 
           ./gradlew \
             :app:bundleRelease \
@@ -402,15 +423,20 @@ jobs:
       # ------------------------------------------------------------
       # CLEAN SIGNING MATERIAL
       # ------------------------------------------------------------
+            # ------------------------------------------------------------
+      # CLEAN SIGNING MATERIAL
+      # ------------------------------------------------------------
       - name: Remove release keystore
         if: always()
         shell: bash
         run: |
-          rm -f app/release-upload.jks
+          KEYSTORE_FILE="${RUNNER_TEMP}/applock-release.keystore"
 
-          if [[ -f app/release-upload.jks ]]; then
+          rm -f "${KEYSTORE_FILE}"
+
+          if [[ -f "${KEYSTORE_FILE}" ]]; then
             echo "WARNING: Release keystore could not be removed."
             exit 1
           fi
 
-          echo "Release keystore removed."
+          echo "Temporary release keystore removed."
