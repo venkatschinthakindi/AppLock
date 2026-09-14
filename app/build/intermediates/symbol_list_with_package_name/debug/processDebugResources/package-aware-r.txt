@@ -1037,6 +1037,7 @@ string abc_searchview_description_voice
 string abc_shareactionprovider_share_with
 string abc_shareactionprovider_share_with_application
 string abc_toolbar_collapse_description
+string about_app
 string accessibility_service_description
 string accessibility_service_label
 string androidx_startup
@@ -1166,6 +1167,8 @@ string offline_opt_in_confirm
 string offline_opt_in_decline
 string offline_opt_in_message
 string offline_opt_in_title
+string privacy_policy
+string privacy_policy_url
 string range_end
 string range_start
 string s1
@@ -1182,6 +1185,9 @@ string state_empty
 string state_off
 string state_on
 string status_bar_notification_info_overflow
+string support
+string support_email
+string support_subject
 string switch_role
 string tab
 string template_percent
