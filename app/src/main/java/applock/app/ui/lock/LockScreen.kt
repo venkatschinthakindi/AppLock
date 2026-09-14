@@ -51,6 +51,7 @@ import applock.app.ads.BannerAd
 import applock.app.domain.AuthMethod
 import applock.app.engine.LockEngine
 import kotlinx.coroutines.delay
+import java.security.SecureRandom
 
 @Composable
 fun LockScreen(
@@ -68,6 +69,23 @@ fun LockScreen(
     var forcePin by remember { mutableStateOf(false) }
     var lockoutRemaining by remember { mutableStateOf(0) }
 
+    /*
+     * SECURITY / PRIVACY:
+     *
+     * The keypad digits are randomized once for this lock-screen
+     * instance. This protects against someone learning the fixed
+     * physical positions of the digits through repeated observation.
+     *
+     * The user's actual PIN is NOT changed.
+     *
+     * The randomized mapping is intentionally remembered so normal
+     * Compose recomposition does not reshuffle the keypad while the
+     * user is entering a PIN.
+     */
+    val randomizedDigits = remember(packageName) {
+        secureShuffleDigits()
+    }
+
     val label = remember(packageName) {
         runCatching {
             context.packageManager.getApplicationLabel(
@@ -83,6 +101,7 @@ fun LockScreen(
         while (app.lockEngine.isBlocked()) {
             lockoutRemaining =
                 app.lockEngine.remainingLockoutSeconds()
+
             delay(1_000L)
         }
 
@@ -109,6 +128,7 @@ fun LockScreen(
             LockEngine.AuthenticationResult.BLOCKED -> {
                 lockoutRemaining =
                     app.lockEngine.remainingLockoutSeconds()
+
                 error = "Too many failed attempts"
             }
 
@@ -130,6 +150,7 @@ fun LockScreen(
         if (app.lockEngine.isBlocked()) {
             lockoutRemaining =
                 app.lockEngine.remainingLockoutSeconds()
+
             return
         }
 
@@ -145,6 +166,7 @@ fun LockScreen(
         if (app.lockEngine.isBlocked()) {
             lockoutRemaining =
                 app.lockEngine.remainingLockoutSeconds()
+
             return
         }
 
@@ -333,7 +355,9 @@ fun LockScreen(
                             Icons.Default.Shield,
                             contentDescription = null,
                             tint =
-                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme
+                                    .colorScheme
+                                    .primary,
                             modifier =
                                 Modifier.size(18.dp)
                         )
@@ -489,12 +513,19 @@ fun LockScreen(
                                 Modifier.height(20.dp)
                             )
 
-                            val keys = listOf(
-                                "1", "2", "3",
-                                "4", "5", "6",
-                                "7", "8", "9",
-                                "⌫", "0", "UNLOCK"
-                            )
+                            /*
+                             * The ten numeric digits have already been
+                             * randomized for this lock-screen instance.
+                             *
+                             * Backspace and Unlock remain fixed so the
+                             * keypad stays familiar and usable.
+                             */
+                            val keys =
+                                randomizedDigits +
+                                    listOf(
+                                        "⌫",
+                                        "UNLOCK"
+                                    )
 
                             keys.chunked(3).forEach { row ->
 
@@ -512,10 +543,15 @@ fun LockScreen(
                                             "⌫" -> {
                                                 Button(
                                                     onClick = {
-                                                        pin =
-                                                            pin.dropLast(1)
+                                                        if (pin.isNotEmpty()) {
+                                                            pin =
+                                                                pin.dropLast(1)
+                                                        }
+
                                                         error = ""
                                                     },
+                                                    enabled =
+                                                        !blocked,
                                                     modifier =
                                                         Modifier
                                                             .weight(1f)
@@ -538,7 +574,8 @@ fun LockScreen(
                                                     onClick =
                                                         ::authenticatePin,
                                                     enabled =
-                                                        pin.length in 4..8,
+                                                        !blocked &&
+                                                            pin.length in 4..8,
                                                     modifier =
                                                         Modifier
                                                             .weight(1f)
@@ -566,12 +603,16 @@ fun LockScreen(
                                                 Button(
                                                     onClick = {
                                                         if (
+                                                            !blocked &&
                                                             pin.length < 8
                                                         ) {
                                                             pin += key
                                                             error = ""
                                                         }
                                                     },
+                                                    enabled =
+                                                        !blocked &&
+                                                            pin.length < 8,
                                                     modifier =
                                                         Modifier
                                                             .weight(1f)
@@ -660,6 +701,54 @@ fun LockScreen(
     }
 }
 
+/**
+ * Creates a secure random permutation of the ten decimal digits.
+ *
+ * SecureRandom is used instead of a predictable pseudo-random source.
+ *
+ * The resulting order is only a keypad presentation order.
+ * It is never used as a credential and never persisted.
+ */
+private fun secureShuffleDigits(): List<String> {
+    val digits =
+        mutableListOf(
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+        )
+
+    val random = SecureRandom()
+
+    /*
+     * Fisher-Yates shuffle.
+     *
+     * Every position is swapped with a randomly selected
+     * remaining position.
+     */
+    for (index in digits.lastIndex downTo 1) {
+        val swapIndex =
+            random.nextInt(index + 1)
+
+        val temporary =
+            digits[index]
+
+        digits[index] =
+            digits[swapIndex]
+
+        digits[swapIndex] =
+            temporary
+    }
+
+    return digits
+}
+
 @Composable
 private fun PatternGrid(
     onComplete: (String) -> Unit
@@ -699,6 +788,7 @@ private fun PatternGrid(
                                     onComplete(
                                         next.joinToString("-")
                                     )
+
                                     selected = emptyList()
                                 }
                             }
