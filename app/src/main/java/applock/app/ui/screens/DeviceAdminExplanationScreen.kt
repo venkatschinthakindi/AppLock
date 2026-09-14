@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
 
 @Composable
 fun DeviceAdminExplanationScreen(
@@ -46,205 +47,276 @@ fun DeviceAdminExplanationScreen(
     val typography = MaterialTheme.typography
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(
-                horizontal = 20.dp,
-                vertical = 16.dp
-            ),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(colors.background)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(
+                    rememberScrollState()
+                )
+                .padding(
+                    horizontal = 20.dp,
+                    vertical = 16.dp
+                ),
+        verticalArrangement =
+            Arrangement.spacedBy(16.dp)
     ) {
 
         /*
-         * AppLock branding / header.
+         * Header.
          */
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier =
+                Modifier.fillMaxWidth(),
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
+
             Surface(
-                modifier = Modifier
-                    .clip(CircleShape),
+                modifier =
+                    Modifier.clip(
+                        CircleShape
+                    ),
                 shape = CircleShape,
-                color = colors.primaryContainer
+                color =
+                    colors.primaryContainer
             ) {
+
                 Box(
-                    modifier = Modifier.padding(14.dp),
-                    contentAlignment = Alignment.Center
+                    modifier =
+                        Modifier.padding(
+                            14.dp
+                        ),
+                    contentAlignment =
+                        Alignment.Center
                 ) {
+
                     Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = colors.primary
+                        imageVector =
+                            Icons.Default.Lock,
+                        contentDescription =
+                            null,
+                        tint =
+                            colors.primary
                     )
                 }
             }
 
             Spacer(
-                modifier = Modifier.padding(horizontal = 8.dp)
+                modifier =
+                    Modifier.widthSpacer(8.dp)
             )
 
             Column {
+
                 Text(
-                    text = "AppLock – Private App Locker",
-                    style = typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    text =
+                        "AppLock – Private App Locker",
+                    style =
+                        typography.titleLarge,
+                    fontWeight =
+                        FontWeight.Bold
                 )
 
                 Text(
-                    text = "Security & privacy",
-                    style = typography.bodyMedium,
-                    color = colors.onSurfaceVariant
+                    text =
+                        "Device protection",
+                    style =
+                        typography.bodyMedium,
+                    color =
+                        colors.onSurfaceVariant
                 )
             }
         }
 
         /*
-         * Main heading.
+         * Main explanation.
          */
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp)
         ) {
+
             Text(
-                text = "Strengthen Your App Protection",
-                style = typography.headlineMedium,
-                fontWeight = FontWeight.Bold
+                text =
+                    "Strengthen AppLock protection",
+                style =
+                    typography.headlineMedium,
+                fontWeight =
+                    FontWeight.Bold
             )
 
             Text(
-                text = "Device protection adds an extra OS-level layer that helps make AppLock harder to disable or remove while your protected apps are secured.",
-                style = typography.bodyLarge,
-                color = colors.onSurfaceVariant
+                text =
+                    "Android Device Admin adds an OS-level security " +
+                        "layer that helps make AppLock harder to disable " +
+                        "or remove.",
+                style =
+                    typography.bodyLarge,
+                color =
+                    colors.onSurfaceVariant
             )
         }
 
-        /*
-         * What this helps protect.
-         */
         ProtectionExplanationCard(
-            title = "What this helps protect",
-            icon = Icons.Default.Shield,
+            title =
+                "Why enable it?",
+            icon =
+                Icons.Default.Shield,
             positive = true,
-            items = listOf(
-                "Prevents unauthorized app-management changes",
-                "Adds OS-level tamper protection",
-                "Helps protect AppLock from being disabled or removed",
-                "Works locally — no internet or account required"
-            )
-        )
-
-        /*
-         * What it does NOT do.
-         */
-        ProtectionExplanationCard(
-            title = "What it does NOT do",
-            icon = Icons.Default.VisibilityOff,
-            positive = false,
-            items = listOf(
-                "Does not read your messages",
-                "Does not access your personal files",
-                "Does not monitor your screen",
-                "Does not change or expose your PIN"
-            )
-        )
-
-        /*
-         * Small security architecture note.
-         */
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = colors.surfaceVariant.copy(
-                    alpha = 0.65f
+            items =
+                listOf(
+                    "Adds an additional OS-level protection layer",
+                    "Helps protect AppLock from unauthorized removal",
+                    "Makes security configuration harder to tamper with",
+                    "Works locally without an account or internet connection"
                 )
-            )
+        )
+
+        ProtectionExplanationCard(
+            title =
+                "What Device Admin does NOT mean",
+            icon =
+                Icons.Default.VisibilityOff,
+            positive = false,
+            items =
+                listOf(
+                    "It does not read your messages",
+                    "It does not read your photos or personal files",
+                    "It does not monitor your screen",
+                    "It does not expose your AppLock PIN or pattern"
+                )
+        )
+
+        Card(
+            modifier =
+                Modifier.fillMaxWidth(),
+            shape =
+                RoundedCornerShape(22.dp),
+            colors =
+                CardDefaults.cardColors(
+                    containerColor =
+                        colors.surfaceVariant.copy(
+                            alpha = 0.65f
+                        )
+                )
         ) {
+
             Row(
-                modifier = Modifier.padding(18.dp),
-                verticalAlignment = Alignment.Top
+                modifier =
+                    Modifier.padding(18.dp),
+                verticalAlignment =
+                    Alignment.Top
             ) {
+
                 Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = null,
-                    tint = colors.primary
+                    imageVector =
+                        Icons.Default.Security,
+                    contentDescription =
+                        null,
+                    tint =
+                        colors.primary
                 )
 
                 Spacer(
-                    modifier = Modifier.padding(horizontal = 6.dp)
+                    modifier =
+                        Modifier.widthSpacer(8.dp)
                 )
 
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement =
+                        Arrangement.spacedBy(4.dp)
                 ) {
+
                     Text(
-                        text = "Your core protection stays local",
-                        style = typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        text =
+                            "Your authentication remains local",
+                        style =
+                            typography.titleSmall,
+                        fontWeight =
+                            FontWeight.SemiBold
                     )
 
                     Text(
-                        text = "Your authentication and lock engine do not depend on ads, billing, analytics, network access or downloaded themes.",
-                        style = typography.bodyMedium,
-                        color = colors.onSurfaceVariant
+                        text =
+                            "PIN, pattern, biometric authentication " +
+                                "and the lock engine remain independent " +
+                                "of ads, billing, analytics and network services.",
+                        style =
+                            typography.bodyMedium,
+                        color =
+                            colors.onSurfaceVariant
                     )
                 }
             }
         }
 
         Spacer(
-            modifier = Modifier.height(2.dp)
+            modifier =
+                Modifier.height(2.dp)
         )
 
-        /*
-         * Primary action.
-         */
         Button(
-            onClick = onEnableProtection,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(16.dp)
+            onClick =
+                onEnableProtection,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+            shape =
+                RoundedCornerShape(16.dp)
         ) {
+
             Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = null
+                imageVector =
+                    Icons.Default.Lock,
+                contentDescription =
+                    null
             )
 
             Spacer(
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier =
+                    Modifier.widthSpacer(8.dp)
             )
 
             Text(
-                text = "Enable protection",
-                fontWeight = FontWeight.SemiBold
+                text =
+                    "Enable device protection",
+                fontWeight =
+                    FontWeight.SemiBold
             )
         }
 
-        /*
-         * Secondary action.
-         */
         OutlinedButton(
-            onClick = onNotNow,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp)
+            onClick =
+                onNotNow,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+            shape =
+                RoundedCornerShape(16.dp)
         ) {
+
             Text(
-                text = "Not now"
+                text =
+                    "Not now"
             )
         }
 
         Text(
-            text = "You can always enable it later from Settings.",
-            modifier = Modifier.fillMaxWidth(),
-            style = typography.bodySmall,
-            color = colors.onSurfaceVariant
+            text =
+                "Android will show a system confirmation screen. " +
+                    "AppLock cannot silently activate Device Admin. " +
+                    "You can enable it later from AppLock Settings.",
+            modifier =
+                Modifier.fillMaxWidth(),
+            style =
+                typography.bodySmall,
+            color =
+                colors.onSurfaceVariant
         )
     }
 }
@@ -256,66 +328,113 @@ private fun ProtectionExplanationCard(
     positive: Boolean,
     items: List<String>
 ) {
-    val colors = MaterialTheme.colorScheme
-    val typography = MaterialTheme.typography
+
+    val colors =
+        MaterialTheme.colorScheme
+
+    val typography =
+        MaterialTheme.typography
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (positive) {
-                colors.primaryContainer.copy(alpha = 0.72f)
-            } else {
-                colors.surfaceVariant.copy(alpha = 0.72f)
-            }
-        )
+        modifier =
+            Modifier.fillMaxWidth(),
+        shape =
+            RoundedCornerShape(22.dp),
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    if (positive) {
+                        colors.primaryContainer.copy(
+                            alpha = 0.72f
+                        )
+                    } else {
+                        colors.surfaceVariant.copy(
+                            alpha = 0.72f
+                        )
+                    }
+            )
     ) {
+
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier =
+                Modifier.padding(18.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp)
         ) {
+
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
+
                 Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = colors.primary
+                    imageVector =
+                        icon,
+                    contentDescription =
+                        null,
+                    tint =
+                        colors.primary
                 )
 
                 Spacer(
-                    modifier = Modifier.padding(horizontal = 5.dp)
+                    modifier =
+                        Modifier.widthSpacer(8.dp)
                 )
 
                 Text(
-                    text = title,
-                    style = typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    text =
+                        title,
+                    style =
+                        typography.titleMedium,
+                    fontWeight =
+                        FontWeight.Bold
                 )
             }
 
             items.forEach { item ->
+
                 Row(
-                    verticalAlignment = Alignment.Top
+                    verticalAlignment =
+                        Alignment.Top
                 ) {
+
                     Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        modifier = Modifier.padding(top = 2.dp),
-                        tint = colors.primary
+                        imageVector =
+                            Icons.Default.Check,
+                        contentDescription =
+                            null,
+                        tint =
+                            colors.primary
                     )
 
                     Spacer(
-                        modifier = Modifier.padding(horizontal = 5.dp)
+                        modifier =
+                            Modifier.widthSpacer(8.dp)
                     )
 
                     Text(
-                        text = item,
-                        style = typography.bodyMedium,
-                        color = colors.onSurfaceVariant
+                        text =
+                            item,
+                        style =
+                            typography.bodyMedium,
+                        color =
+                            colors.onSurfaceVariant
                     )
                 }
             }
         }
     }
 }
+
+/*
+ * Small layout helper keeps the replacement readable.
+ */
+private fun Modifier.widthSpacer(
+    width: androidx.compose.ui.unit.Dp
+): Modifier =
+    this.then(
+        Modifier
+            .padding(
+                horizontal = width / 2
+            )
+    )
