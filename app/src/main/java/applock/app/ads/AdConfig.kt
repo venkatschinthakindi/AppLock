@@ -23,5 +23,5 @@ object AdConfig {
      *
      * MUST be false for production release.
      */
-    const val USE_TEST_ADS = true
+    const val USE_TEST_ADS = false
 }
