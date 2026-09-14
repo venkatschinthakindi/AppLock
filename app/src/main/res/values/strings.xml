@@ -3,6 +3,29 @@
     <string name="app_name">AppLock – Private App Locker</string>
     <string name="accessibility_service_label">App Lock protection service</string>
     <string name="accessibility_service_description">Detects protected app window transitions so App Lock can show authentication. It does not retrieve window content.</string>
+    <string name="privacy_policy">
+        Privacy Policy
+    </string>
+
+    <string name="support">
+        Support
+    </string>
+
+    <string name="about_app">
+        About App Lock
+    </string>
+
+    <string name="support_email">
+        contact@thrinetratech.in
+    </string>
+
+    <string name="privacy_policy_url">
+        https://thrinetratech.in/applock-privacy-policy
+    </string>
+
+    <string name="support_subject">
+        App Lock Support
+    </string>
     <string name="device_admin_description">App Lock device protection</string>
     <string name="device_admin_explanation">Enable device protection to make uninstall and tamper attempts harder to bypass.</string>
 </resources>

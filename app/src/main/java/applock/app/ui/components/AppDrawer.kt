@@ -20,11 +20,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,6 +47,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import applock.app.R
+
+private const val PRIVACY_POLICY_URL =
+    "https://thrinetratech.in/applock-privacy-policy"
+
+private const val SUPPORT_EMAIL =
+    "contact@thrinetratech.in"
 
 @Composable
 fun AppDrawer(
@@ -138,6 +147,108 @@ fun AppDrawer(
                     )
                 )
             }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(
+                    vertical = 14.dp,
+                    horizontal = 16.dp
+                )
+            )
+
+            // Privacy Policy
+            NavigationDrawerItem(
+                label = {
+                    Text(
+                        text = "Privacy Policy",
+                        fontWeight = FontWeight.Normal
+                    )
+                },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Policy,
+                        contentDescription = null
+                    )
+                },
+                selected = false,
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(PRIVACY_POLICY_URL)
+                            )
+                        )
+                    }
+                },
+                modifier = Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 2.dp
+                )
+            )
+
+            // Support
+            NavigationDrawerItem(
+                label = {
+                    Text(
+                        text = "Support",
+                        fontWeight = FontWeight.Normal
+                    )
+                },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.SupportAgent,
+                        contentDescription = null
+                    )
+                },
+                selected = false,
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_SENDTO,
+                                Uri.parse("mailto:$SUPPORT_EMAIL")
+                            ).apply {
+                                putExtra(
+                                    Intent.EXTRA_SUBJECT,
+                                    "App Lock Support"
+                                )
+                            }
+                        )
+                    }
+                },
+                modifier = Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 2.dp
+                )
+            )
+
+            // About
+            NavigationDrawerItem(
+                label = {
+                    Text(
+                        text = "About AppLock",
+                        fontWeight = if (currentDestination == "about") {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        }
+                    )
+                },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null
+                    )
+                },
+                selected = currentDestination == "about",
+                onClick = {
+                    onDestination("about")
+                },
+                modifier = Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 2.dp
+                )
+            )
 
             HorizontalDivider(
                 modifier = Modifier.padding(
