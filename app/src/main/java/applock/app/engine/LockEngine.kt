@@ -2,691 +2,342 @@ package applock.app.engine
 
 import android.os.SystemClock
 import applock.app.data.AppLockRepository
+import applock.app.domain.AuthMethod
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Process-local AppLock decision engine.
+ * Process-local security state machine for protected-app launches.
  *
- * Responsibilities:
- * - Decide whether a protected package requires authentication.
- * - Keep accessibility event handling deterministic.
- * - Prevent rapid duplicate accessibility events from launching
- *   multiple LockActivity instances.
- * - Maintain authentication throttling.
- * - Record successful authentication.
- * - Allow the immediate post-authentication return to the protected app.
- *
- * The AccessibilityService observes package/window transitions.
- * This class owns the security decision.
+ * A credential is valid only for the exact authentication request that was
+ * created for the current foreground package. A successful authentication
+ * creates a package-bound foreground authorization; it is cleared whenever
+ * the foreground package actually changes.
  */
-class LockEngine(
-    private val repository: AppLockRepository
-) {
-
+class LockEngine(private val repository: AppLockRepository) {
     enum class State {
-        IDLE,
-        PROTECTED_APP_DETECTED,
-        CHECKING_STATE,
-        AUTHENTICATION_REQUIRED,
-        SHOWING_AUTH,
-        UNLOCKED,
-        LIMITED_PROTECTION,
-        TEMPORARILY_BLOCKED
+        IDLE, PROTECTED_APP_DETECTED, CHECKING_STATE, AUTHENTICATION_REQUIRED,
+        SHOWING_AUTH, UNLOCKED, LIMITED_PROTECTION, TEMPORARILY_BLOCKED
     }
 
     enum class AuthenticationResult {
-        SUCCESS,
-        BLOCKED,
-        INVALID_CREDENTIAL,
-        NOT_PROTECTED,
-        NOT_CONFIGURED,
+        SUCCESS, BLOCKED, INVALID_CREDENTIAL, NOT_PROTECTED, NOT_CONFIGURED,
         LIMITED_PROTECTION
     }
 
     private val _state = MutableStateFlow(State.IDLE)
+    val state: StateFlow<State> = _state.asStateFlow()
 
-    val state: StateFlow<State> =
-        _state.asStateFlow()
+    private var currentForegroundPackage: String? = null
+    private var authorizedForegroundPackage: String? = null
+    private var activeRequestId = 0L
+    private var activeRequestPackage: String? = null
+    private var authenticatedReturnRequestId = 0L
+    private var authenticatedReturnPackage: String? = null
 
-    /*
-     * Last package that was actually processed as a foreground transition.
-     *
-     * This prevents repeated accessibility events for the same continuous
-     * foreground package from repeatedly opening LockActivity.
-     */
-    private var lastProcessedPackage: String? = null
-
-    /*
-     * Short-lived duplicate-event suppression.
-     *
-     * AccessibilityService can deliver multiple events for one transition.
-     */
-    private var lastDecisionPackage: String? = null
-    private var lastDecisionElapsed: Long = 0L
-
-    /*
-     * One-time authenticated return token.
-     *
-     * After successful authentication LockActivity launches the protected
-     * application. Android will normally report that package again.
-     *
-     * That immediate return event must NOT trigger the lock again.
-     */
-    private var authenticatedPackage: String? = null
-    private var authenticatedReturnPending = false
-
-    /*
-     * Process-local authentication throttling.
-     */
     private var failedAttempts = 0
     private var blockedUntilElapsed = 0L
 
     private companion object {
-        const val DUPLICATE_DECISION_WINDOW_MS = 500L
         const val MAX_FAILED_ATTEMPTS = 5
         const val LOCKOUT_DURATION_MS = 30_000L
     }
 
-    /**
-     * Called whenever AccessibilityService observes a package.
-     *
-     * Returns true only when LockActivity must be shown.
-     */
+    /** Returns true only on a new protected-app entry that needs the lock UI. */
     @Synchronized
-    fun onPackageVisible(
-        packageName: String
-    ): Boolean {
+    fun onPackageVisible(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
 
-        if (packageName.isBlank()) {
-            return false
+        val changed = currentForegroundPackage != packageName
+        if (changed) {
+            currentForegroundPackage = packageName
+            authorizedForegroundPackage = null
+            invalidateAuthenticationRequestLocked()
+            authenticatedReturnRequestId = 0L
+            authenticatedReturnPackage = null
         }
 
-        val now = SystemClock.elapsedRealtime()
-
-        /*
-         * Suppress only an extremely short duplicate event burst.
-         *
-         * We intentionally do NOT permanently suppress a package here.
-         */
-        if (
-            packageName == lastDecisionPackage &&
-            now - lastDecisionElapsed <
-            DUPLICATE_DECISION_WINDOW_MS
-        ) {
-            return false
-        }
-
-        lastDecisionPackage = packageName
-        lastDecisionElapsed = now
-
-        /*
-         * Unprotected package.
-         */
         if (!repository.isProtected(packageName)) {
-            authenticatedPackage = null
-            authenticatedReturnPending = false
-
-            lastProcessedPackage = packageName
-
             _state.value = State.IDLE
-
             return false
         }
 
-        /*
-         * Consume the one-time return token generated by successful
-         * authentication.
-         */
-        if (
-            authenticatedReturnPending &&
-            authenticatedPackage == packageName
-        ) {
-            authenticatedReturnPending = false
-            authenticatedPackage = null
-
-            lastProcessedPackage = packageName
-
+        if (consumeAuthenticatedReturnLocked(packageName)) {
+            authorizedForegroundPackage = packageName
             _state.value = State.UNLOCKED
-
             return false
         }
 
-        /*
-         * Same protected package is still continuously visible.
-         *
-         * Do not repeatedly launch the lock screen for every accessibility
-         * event.
-         *
-         * A genuine package transition resets this through
-         * onNonProtectedPackageVisible().
-         */
-        if (packageName == lastProcessedPackage) {
+        // The user is already authenticated and is still in this app.
+        if (authorizedForegroundPackage == packageName) {
+            _state.value = State.UNLOCKED
             return false
         }
 
-        lastProcessedPackage = packageName
-
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT require repository.accessibilityEnabled() here.
-         *
-         * This method is being called FROM the running AccessibilityService.
-         * Therefore the service itself is already proof that the accessibility
-         * callback path is active.
-         *
-         * The repository accessibility flag remains useful for diagnostics
-         * and the protection health screen.
-         */
-
-        /*
-         * A credential must exist before protected apps can be opened.
-         */
-        if (!repository.authenticationConfigured()) {
-            _state.value = State.LIMITED_PROTECTION
+        // The request is already being displayed for this exact package.
+        if (activeRequestPackage == packageName && activeRequestId != 0L) {
+            _state.value = State.SHOWING_AUTH
             return false
         }
 
-        /*
-         * Do not open another authentication screen during temporary lockout.
-         */
         if (isBlocked()) {
             _state.value = State.TEMPORARILY_BLOCKED
+            return false
+        }
+
+        if (!repository.authenticationConfigured()) {
+            _state.value = State.LIMITED_PROTECTION
             return false
         }
 
         _state.value = State.PROTECTED_APP_DETECTED
         _state.value = State.CHECKING_STATE
 
-        val required =
-            repository.shouldRequireAuth(packageName)
-
-        if (required) {
-            _state.value = State.AUTHENTICATION_REQUIRED
-            return true
-        }
-
-        _state.value = State.UNLOCKED
-        return false
-    }
-
-    /**
-     * Called immediately before LockActivity is displayed.
-     */
-    @Synchronized
-    fun markAuthUiShown() {
-        _state.value =
-            if (isBlocked()) {
-                State.TEMPORARILY_BLOCKED
-            } else {
-                State.SHOWING_AUTH
-            }
-    }
-
-    /**
-     * Returns whether authentication is temporarily blocked.
-     */
-    @Synchronized
-    fun isBlocked(): Boolean {
-
-        val now =
-            SystemClock.elapsedRealtime()
-
-        if (blockedUntilElapsed <= now) {
-
-            if (blockedUntilElapsed != 0L) {
-                blockedUntilElapsed = 0L
-                failedAttempts = 0
-
-                if (
-                    _state.value ==
-                    State.TEMPORARILY_BLOCKED
-                ) {
-                    _state.value =
-                        State.AUTHENTICATION_REQUIRED
-                }
-            }
-
+        if (!repository.shouldRequireAuth(packageName)) {
+            authorizedForegroundPackage = packageName
+            _state.value = State.UNLOCKED
             return false
         }
 
+        activeRequestId = nextRequestId(activeRequestId)
+        activeRequestPackage = packageName
+        _state.value = State.AUTHENTICATION_REQUIRED
         return true
     }
 
-    /**
-     * Remaining temporary lockout time.
-     */
     @Synchronized
-    fun remainingLockoutSeconds(): Int {
+    fun markAuthUiShown() {
+        _state.value = when {
+            isBlocked() -> State.TEMPORARILY_BLOCKED
+            activeRequestPackage != null -> State.SHOWING_AUTH
+            else -> State.AUTHENTICATION_REQUIRED
+        }
+    }
 
-        val remaining =
-            blockedUntilElapsed -
-                SystemClock.elapsedRealtime()
+    @Synchronized
+    fun isAuthenticationRequestActive(packageName: String): Boolean =
+        packageName.isNotBlank() &&
+            currentForegroundPackage == packageName &&
+            activeRequestPackage == packageName &&
+            activeRequestId != 0L
 
-        if (remaining <= 0L) {
+    @Synchronized
+    fun isAuthenticatedReturnPendingFor(packageName: String): Boolean =
+        packageName.isNotBlank() &&
+            currentForegroundPackage == packageName &&
+            authenticatedReturnPackage == packageName &&
+            authenticatedReturnRequestId != 0L
 
+    @Synchronized
+    fun isAuthorizedForLaunch(packageName: String): Boolean =
+        packageName.isNotBlank() &&
+            currentForegroundPackage == packageName &&
+            authorizedForegroundPackage == packageName &&
+            (authenticatedReturnPackage == packageName ||
+                _state.value == State.UNLOCKED)
+
+    @Synchronized
+    fun isBlocked(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (blockedUntilElapsed <= now) {
             if (blockedUntilElapsed != 0L) {
                 blockedUntilElapsed = 0L
                 failedAttempts = 0
-
-                if (
-                    _state.value ==
-                    State.TEMPORARILY_BLOCKED
-                ) {
-                    _state.value =
-                        State.AUTHENTICATION_REQUIRED
+                if (_state.value == State.TEMPORARILY_BLOCKED) {
+                    _state.value = State.AUTHENTICATION_REQUIRED
                 }
             }
+            return false
+        }
+        return true
+    }
 
+    @Synchronized
+    fun remainingLockoutSeconds(): Int {
+        val remaining = blockedUntilElapsed - SystemClock.elapsedRealtime()
+        if (remaining <= 0L) {
+            blockedUntilElapsed = 0L
+            failedAttempts = 0
+            if (_state.value == State.TEMPORARILY_BLOCKED) {
+                _state.value = State.AUTHENTICATION_REQUIRED
+            }
             return 0
         }
-
-        return (
-            (remaining + 999L) / 1_000L
-            )
-            .coerceAtLeast(1L)
-            .toInt()
+        return ((remaining + 999L) / 1_000L).coerceAtLeast(1L).toInt()
     }
 
-    /**
-     * Authenticate using PIN.
-     */
     @Synchronized
-    fun authenticatePin(
-        packageName: String,
-        pin: String
-    ): AuthenticationResult {
-
-        if (isBlocked()) {
-            _state.value =
-                State.TEMPORARILY_BLOCKED
-
-            return AuthenticationResult.BLOCKED
-        }
-
-        if (
-            packageName.isBlank() ||
-            !repository.isProtected(packageName)
-        ) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-
-            return AuthenticationResult.NOT_PROTECTED
-        }
-
-        if (!repository.authenticationConfigured()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
+    fun authenticatePin(packageName: String, pin: String): AuthenticationResult {
+        if (isBlocked()) return AuthenticationResult.BLOCKED.also { _state.value = State.TEMPORARILY_BLOCKED }
+        if (!isAuthenticationRequestActive(packageName)) return invalidContext()
+        if (!repository.authenticationConfigured() || !repository.hasPin()) {
+            _state.value = State.LIMITED_PROTECTION
             return AuthenticationResult.NOT_CONFIGURED
         }
-
-        if (!repository.hasPin()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
-            return AuthenticationResult.NOT_CONFIGURED
-        }
-
-        if (repository.verifyPin(pin)) {
-
-            failedAttempts = 0
-            blockedUntilElapsed = 0L
-
-            return if (unlock(packageName)) {
-                AuthenticationResult.SUCCESS
-            } else {
-                AuthenticationResult.LIMITED_PROTECTION
-            }
-        }
-
-        registerFailedAuthentication()
-
-        return if (isBlocked()) {
-            AuthenticationResult.BLOCKED
-        } else {
-            AuthenticationResult.INVALID_CREDENTIAL
-        }
+        if (!repository.verifyPin(pin)) return failedCredential()
+        return completeCredentialAuthentication(packageName)
     }
 
-    /**
-     * Authenticate using pattern.
-     */
     @Synchronized
-    fun authenticatePattern(
-        packageName: String,
-        pattern: String
-    ): AuthenticationResult {
-
-        if (isBlocked()) {
-            _state.value =
-                State.TEMPORARILY_BLOCKED
-
-            return AuthenticationResult.BLOCKED
-        }
-
-        if (
-            packageName.isBlank() ||
-            !repository.isProtected(packageName)
-        ) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-
-            return AuthenticationResult.NOT_PROTECTED
-        }
-
-        if (!repository.authenticationConfigured()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
+    fun authenticatePattern(packageName: String, pattern: String): AuthenticationResult {
+        if (isBlocked()) return AuthenticationResult.BLOCKED.also { _state.value = State.TEMPORARILY_BLOCKED }
+        if (!isAuthenticationRequestActive(packageName)) return invalidContext()
+        if (!repository.authenticationConfigured() || !repository.hasPattern()) {
+            _state.value = State.LIMITED_PROTECTION
             return AuthenticationResult.NOT_CONFIGURED
         }
-
-        if (!repository.hasPattern()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
-            return AuthenticationResult.NOT_CONFIGURED
-        }
-
-        if (repository.verifyPattern(pattern)) {
-
-            failedAttempts = 0
-            blockedUntilElapsed = 0L
-
-            return if (unlock(packageName)) {
-                AuthenticationResult.SUCCESS
-            } else {
-                AuthenticationResult.LIMITED_PROTECTION
-            }
-        }
-
-        registerFailedAuthentication()
-
-        return if (isBlocked()) {
-            AuthenticationResult.BLOCKED
-        } else {
-            AuthenticationResult.INVALID_CREDENTIAL
-        }
+        if (!repository.verifyPattern(pattern)) return failedCredential()
+        return completeCredentialAuthentication(packageName)
     }
 
-    /**
-     * Complete biometric authentication.
-     *
-     * BiometricPrompt performs the actual biometric verification.
-     */
     @Synchronized
-    fun completeBiometricAuthentication(
-        packageName: String
-    ): AuthenticationResult {
-
-        if (isBlocked()) {
-            _state.value =
-                State.TEMPORARILY_BLOCKED
-
-            return AuthenticationResult.BLOCKED
-        }
-
-        if (
-            packageName.isBlank() ||
-            !repository.isProtected(packageName)
-        ) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-
-            return AuthenticationResult.NOT_PROTECTED
-        }
-
+    fun completeBiometricAuthentication(packageName: String): AuthenticationResult {
+        if (isBlocked()) return AuthenticationResult.BLOCKED.also { _state.value = State.TEMPORARILY_BLOCKED }
+        if (!isAuthenticationRequestActive(packageName)) return invalidContext()
         if (!repository.authenticationConfigured()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
+            _state.value = State.LIMITED_PROTECTION
             return AuthenticationResult.NOT_CONFIGURED
         }
+        if (repository.getAuthMethod() != AuthMethod.BIOMETRIC) {
+            _state.value = State.AUTHENTICATION_REQUIRED
+            return AuthenticationResult.LIMITED_PROTECTION
+        }
+        return completeCredentialAuthentication(packageName)
+    }
 
-        if (
-            repository.getAuthMethod() !=
-            applock.app.domain.AuthMethod.BIOMETRIC
-        ) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
+    @Synchronized
+    fun unlock(packageName: String): Boolean {
+        return completeCredentialAuthentication(packageName) == AuthenticationResult.SUCCESS
+    }
 
+    @Synchronized
+    fun preAuthenticate(packageName: String): Boolean {
+        if (packageName.isBlank() || !repository.isProtected(packageName)) return false
+        if (!repository.authenticationConfigured() || isBlocked()) return false
+        currentForegroundPackage = packageName
+        authorizedForegroundPackage = null
+        authenticatedReturnRequestId = 0L
+        authenticatedReturnPackage = null
+        activeRequestId = nextRequestId(activeRequestId)
+        activeRequestPackage = packageName
+        _state.value = State.AUTHENTICATION_REQUIRED
+        return true
+    }
+
+    @Synchronized
+    fun resetAuthenticationThrottle() {
+        failedAttempts = 0
+        blockedUntilElapsed = 0L
+        if (_state.value == State.TEMPORARILY_BLOCKED) _state.value = State.AUTHENTICATION_REQUIRED
+    }
+
+    /** Explicit AppLock boundary: AppLock itself is never a protected target. */
+    @Synchronized
+    fun onAppLockVisible() {
+        currentForegroundPackage = null
+        authorizedForegroundPackage = null
+        invalidateAuthenticationRequestLocked()
+        authenticatedReturnRequestId = 0L
+        authenticatedReturnPackage = null
+        _state.value = State.IDLE
+    }
+
+    @Synchronized
+    fun resetTransitionState() {
+        currentForegroundPackage = null
+        authorizedForegroundPackage = null
+        invalidateAuthenticationRequestLocked()
+        authenticatedReturnRequestId = 0L
+        authenticatedReturnPackage = null
+        _state.value = State.IDLE
+    }
+
+    @Synchronized
+    fun reset() {
+        resetTransitionState()
+        failedAttempts = 0
+        blockedUntilElapsed = 0L
+    }
+
+    @Synchronized
+    fun onNonProtectedPackageVisible(packageName: String) {
+        if (packageName.isBlank()) return
+        if (currentForegroundPackage == packageName) {
+            currentForegroundPackage = null
+        }
+        authorizedForegroundPackage = null
+        invalidateAuthenticationRequestLocked()
+        authenticatedReturnRequestId = 0L
+        authenticatedReturnPackage = null
+        _state.value = State.IDLE
+    }
+
+    @Synchronized
+    fun cancelAuthenticationForPackage(packageName: String) {
+        if (packageName.isBlank()) return
+        if (activeRequestPackage == packageName) invalidateAuthenticationRequestLocked()
+        if (authenticatedReturnPackage == packageName) {
+            authenticatedReturnRequestId = 0L
+            authenticatedReturnPackage = null
+        }
+        if (authorizedForegroundPackage == packageName) authorizedForegroundPackage = null
+        if (_state.value != State.TEMPORARILY_BLOCKED) _state.value = State.IDLE
+    }
+
+    private fun completeCredentialAuthentication(packageName: String): AuthenticationResult {
+        if (!isAuthenticationRequestActive(packageName)) return invalidContext()
+        if (!repository.isProtected(packageName)) {
+            invalidateAuthenticationRequestLocked()
+            return AuthenticationResult.NOT_PROTECTED
+        }
+        if (!repository.markUnlocked(packageName)) {
+            _state.value = State.AUTHENTICATION_REQUIRED
             return AuthenticationResult.LIMITED_PROTECTION
         }
 
+        authenticatedReturnRequestId = activeRequestId
+        authenticatedReturnPackage = packageName
+        // Mark the package authorized immediately. The return token remains
+        // separately pending so the first post-authentication accessibility
+        // event can be consumed without re-locking.
+        authorizedForegroundPackage = packageName
+        invalidateAuthenticationRequestLocked()
         failedAttempts = 0
         blockedUntilElapsed = 0L
-
-        return if (unlock(packageName)) {
-            AuthenticationResult.SUCCESS
-        } else {
-            AuthenticationResult.LIMITED_PROTECTION
-        }
+        _state.value = State.UNLOCKED
+        return AuthenticationResult.SUCCESS
     }
 
-    /**
-     * Register failed authentication attempt.
-     */
-    @Synchronized
-    private fun registerFailedAuthentication() {
-
+    private fun failedCredential(): AuthenticationResult {
         failedAttempts++
-
         if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-
-            blockedUntilElapsed =
-                SystemClock.elapsedRealtime() +
-                    LOCKOUT_DURATION_MS
-
-            _state.value =
-                State.TEMPORARILY_BLOCKED
-
-        } else {
-
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
+            blockedUntilElapsed = SystemClock.elapsedRealtime() + LOCKOUT_DURATION_MS
+            _state.value = State.TEMPORARILY_BLOCKED
+            return AuthenticationResult.BLOCKED
         }
+        _state.value = State.AUTHENTICATION_REQUIRED
+        return AuthenticationResult.INVALID_CREDENTIAL
     }
 
-    /**
-     * Explicitly reset authentication throttling.
-     */
-    @Synchronized
-    fun resetAuthenticationThrottle() {
-
-        failedAttempts = 0
-        blockedUntilElapsed = 0L
-
-        if (
-            _state.value ==
-            State.TEMPORARILY_BLOCKED
-        ) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-        }
+    private fun invalidContext(): AuthenticationResult {
+        _state.value = if (repository.authenticationConfigured()) State.AUTHENTICATION_REQUIRED else State.LIMITED_PROTECTION
+        return AuthenticationResult.LIMITED_PROTECTION
     }
 
-    /**
-     * Records successful authentication.
-     *
-     * This is intentionally the only engine entry point that creates the
-     * authenticated return token.
-     */
-    @Synchronized
-    fun unlock(
-        packageName: String
-    ): Boolean {
-
-        if (packageName.isBlank()) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-
-            return false
-        }
-
-        if (!repository.isProtected(packageName)) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-
-            return false
-        }
-
-        if (!repository.authenticationConfigured()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
-            return false
-        }
-
-        /*
-         * LockScreen and LockActivity may both call unlock().
-         *
-         * Treat the second call for the same authenticated package as
-         * idempotent.
-         */
-        if (
-            authenticatedReturnPending &&
-            authenticatedPackage == packageName
-        ) {
-            _state.value =
-                State.UNLOCKED
-
+    private fun consumeAuthenticatedReturnLocked(packageName: String): Boolean {
+        if (authenticatedReturnRequestId != 0L && authenticatedReturnPackage == packageName) {
+            authenticatedReturnRequestId = 0L
+            authenticatedReturnPackage = null
             return true
         }
-
-        if (!repository.markUnlocked(packageName)) {
-            _state.value =
-                State.AUTHENTICATION_REQUIRED
-
-            return false
-        }
-
-        authenticatedPackage = packageName
-        authenticatedReturnPending = true
-
-        /*
-         * The next package event must be evaluated normally so the
-         * authenticated return token can be consumed.
-         */
-        lastDecisionPackage = null
-        lastDecisionElapsed = 0L
-
-        failedAttempts = 0
-        blockedUntilElapsed = 0L
-
-        _state.value =
-            State.UNLOCKED
-
-        return true
+        return false
     }
 
-    /**
-     * Optional pre-authentication check.
-     */
-    @Synchronized
-    fun preAuthenticate(
-        packageName: String
-    ): Boolean {
-
-        if (packageName.isBlank()) {
-            return false
-        }
-
-        if (!repository.isProtected(packageName)) {
-            return false
-        }
-
-        if (!repository.authenticationConfigured()) {
-            _state.value =
-                State.LIMITED_PROTECTION
-
-            return false
-        }
-
-        if (isBlocked()) {
-            _state.value =
-                State.TEMPORARILY_BLOCKED
-
-            return false
-        }
-
-        _state.value =
-            State.AUTHENTICATION_REQUIRED
-
-        return true
+    private fun invalidateAuthenticationRequestLocked() {
+        activeRequestId = 0L
+        activeRequestPackage = null
     }
 
-    /**
-     * Reset only foreground/transition state.
-     *
-     * Authentication throttling is deliberately preserved.
-     *
-     * This is used when the AccessibilityService is recreated/interrupted.
-     */
-    @Synchronized
-    fun resetTransitionState() {
-
-        _state.value =
-            State.IDLE
-
-        lastProcessedPackage = null
-        lastDecisionPackage = null
-        lastDecisionElapsed = 0L
-
-        authenticatedPackage = null
-        authenticatedReturnPending = false
-    }
-
-    /**
-     * Full process-local reset.
-     *
-     * Kept for existing callers that intentionally expect a complete reset.
-     */
-    @Synchronized
-    fun reset() {
-
-        resetTransitionState()
-
-        failedAttempts = 0
-        blockedUntilElapsed = 0L
-    }
-
-    /**
-     * Marks a transition away from the supplied package.
-     *
-     * IMPORTANT:
-     * The service passes the PREVIOUS package here, not the new package.
-     *
-     * That makes the following sequence valid:
-     *
-     *     previous package -> new protected package
-     *
-     * because lastProcessedPackage becomes the previous package and the new
-     * package is therefore evaluated normally.
-     */
-    @Synchronized
-    fun onNonProtectedPackageVisible(
-        packageName: String
-    ) {
-
-        if (packageName.isBlank()) {
-            return
-        }
-
-        authenticatedPackage = null
-        authenticatedReturnPending = false
-
-        lastProcessedPackage = packageName
-
-        /*
-         * A new package transition is a new decision boundary.
-         */
-        lastDecisionPackage = null
-        lastDecisionElapsed = 0L
-
-        _state.value =
-            State.IDLE
-    }
+    private fun nextRequestId(previous: Long): Long = if (previous == Long.MAX_VALUE) 1L else previous + 1L
 }

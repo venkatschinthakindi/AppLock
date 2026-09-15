@@ -1,7 +1,6 @@
 package applock.app
 
 import android.app.ActivityManager
-import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import applock.app.security.AntiTamperManager
+import applock.app.service.AppDetectionAccessibilityService
 import applock.app.ui.AppLockRoot
 import applock.app.ui.screens.DeviceAdminExplanationScreen
 import applock.app.ui.theme.AppLockTheme
@@ -24,11 +24,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private var showDeviceAdminExplanation by mutableStateOf(false)
-
-    /*
-     * True only while the Android Device Admin screen has been launched
-     * from our explanation screen.
-     */
     private var deviceAdminRequestLaunched = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,11 +32,16 @@ class MainActivity : ComponentActivity() {
 
         val app = application as AppLockApplication
 
+        // Opening the real AppLock UI is an explicit security boundary.
+        // Any stale protected-app lock request must be cancelled immediately.
+        app.lockEngine.onAppLockVisible()
+        AppDetectionAccessibilityService.notifyAppLockMainUiShown()
+        AppDetectionAccessibilityService.releaseForegroundBarrier()
+
         if (Build.VERSION.SDK_INT >= 35) {
             val startInfo = getSystemService(ActivityManager::class.java)
                 ?.getHistoricalProcessStartReasons(1)
                 ?.firstOrNull()
-
             if (startInfo?.wasForceStopped() == true) {
                 app.repository.markForceStopRecovery()
                 app.lockEngine.resetTransitionState()
@@ -51,12 +51,6 @@ class MainActivity : ComponentActivity() {
 
         app.repository.refreshProtectionState()
 
-        /*
-         * There are two ways to enter the explanation:
-         *
-         * 1. Automatic first-run security flow.
-         * 2. Explicit recovery action from Home.
-         */
         showDeviceAdminExplanation =
             intent.getBooleanExtra(
                 EXTRA_SHOW_DEVICE_ADMIN_EXPLANATION,
@@ -65,38 +59,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val theme by app.repository.theme.collectAsState()
-
             AppLockTheme(theme) {
                 if (showDeviceAdminExplanation) {
                     DeviceAdminExplanationScreen(
                         onEnableProtection = {
                             deviceAdminRequestLaunched = true
-
-                            /*
-                             * Mark the explanation as handled before
-                             * entering Android's system UI.
-                             */
-                            AntiTamperManager.markDeviceAdminExplanationShown(
-                                this
-                            )
-
-                            val launched =
-                                AntiTamperManager.requestDeviceAdmin(this)
-
-                            /*
-                             * If Android could not launch the Device Admin
-                             * screen, return to normal AppLock UI.
-                             */
+                            AntiTamperManager.markDeviceAdminExplanationShown(this)
+                            val launched = AntiTamperManager.requestDeviceAdmin(this)
                             if (!launched) {
                                 deviceAdminRequestLaunched = false
                                 showDeviceAdminExplanation = false
                             }
                         },
                         onNotNow = {
-                            AntiTamperManager.markDeviceAdminExplanationShown(
-                                this
-                            )
-
+                            AntiTamperManager.markDeviceAdminExplanationShown(this)
                             showDeviceAdminExplanation = false
                         }
                     )
@@ -107,21 +83,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
+    override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-
         setIntent(intent)
 
-        if (
-            intent.getBooleanExtra(
-                EXTRA_SHOW_DEVICE_ADMIN_EXPLANATION,
-                false
-            )
-        ) {
-            val app = application as AppLockApplication
+        val app = application as AppLockApplication
+        app.lockEngine.onAppLockVisible()
+        AppDetectionAccessibilityService.notifyAppLockMainUiShown()
+        AppDetectionAccessibilityService.releaseForegroundBarrier()
 
+        if (intent.getBooleanExtra(EXTRA_SHOW_DEVICE_ADMIN_EXPLANATION, false)) {
             app.repository.refreshProtectionState()
-
             showDeviceAdminExplanation =
                 !AntiTamperManager.isDeviceAdminActive(this)
         }
@@ -132,29 +104,18 @@ class MainActivity : ComponentActivity() {
 
         val app = application as AppLockApplication
 
+        // onResume is the final boundary: even if AccessibilityService missed
+        // the MainActivity window event, returning to AppLock cancels stale
+        // protected-app authentication and removes any transition barrier.
+        app.lockEngine.onAppLockVisible()
+        AppDetectionAccessibilityService.notifyAppLockMainUiShown()
+        AppDetectionAccessibilityService.releaseForegroundBarrier()
         app.repository.refreshProtectionState()
 
-        /*
-         * If Android's Device Admin screen was launched, this Activity
-         * resumes when the user returns from it.
-         *
-         * Always check the actual OS state.
-         */
         if (deviceAdminRequestLaunched) {
             deviceAdminRequestLaunched = false
-
-            val enabled =
-                AntiTamperManager.isDeviceAdminActive(this)
-
-            /*
-             * Whether the user enabled or cancelled Device Admin,
-             * return to normal AppLock UI.
-             *
-             * ProtectionHealthScreen remains responsible for showing
-             * the actual current protection state.
-             */
+            val enabled = AntiTamperManager.isDeviceAdminActive(this)
             showDeviceAdminExplanation = false
-
             if (enabled) {
                 app.repository.refreshProtectionState()
             }

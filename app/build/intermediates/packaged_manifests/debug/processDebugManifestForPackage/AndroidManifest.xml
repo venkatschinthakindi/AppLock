@@ -77,22 +77,30 @@
         android:testOnly="true"
         android:theme="@style/Theme.AppLock"
         android:usesCleartextTraffic="false" >
+
+        <!--
+            Security UI runs in a separate task from the normal AppLock task.
+            This is critical: tapping the AppLock launcher icon must always
+            open MainActivity, never resume a stale Chrome/other-app LockActivity.
+        -->
         <activity
             android:name="applock.app.ui.lock.LockActivity"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:noHistory="false"
             android:screenOrientation="portrait"
             android:showWhenLocked="true"
+            android:taskAffinity="applock.app.lock"
             android:turnScreenOn="true" />
         <activity
             android:name="applock.app.ui.lock.SecurityGateActivity"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:showWhenLocked="true"
+            android:taskAffinity="applock.app.security"
             android:turnScreenOn="true" />
         <activity
             android:name="applock.app.MainActivity"

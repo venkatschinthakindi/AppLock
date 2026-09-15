@@ -14,35 +14,22 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.FrameLayout
 import applock.app.AppLockApplication
 import applock.app.domain.SessionRule
-import applock.app.engine.LockEngine
 import applock.app.security.AntiTamperManager
 import applock.app.security.AntiTamperPolicy
 import applock.app.ui.lock.LockActivity
 import applock.app.ui.lock.SecurityGateActivity
 
-/**
- * Foreground enforcement service.
- *
- * The critical path uses an accessibility overlay as a short-lived fail-closed
- * barrier. This avoids the Activity-start race where a protected application can
- * draw before LockActivity becomes the top activity.
- *
- * The overlay contains no credentials and does not inspect window content.
- */
+/** Foreground protected-app enforcement. */
 class AppDetectionAccessibilityService : AccessibilityService() {
-
     private val app: AppLockApplication
         get() = application as AppLockApplication
 
     private val mainHandler = Handler(Looper.getMainLooper())
-
     private var lastExternalPackage: String? = null
     private var pendingTargetPackage: String? = null
     private var lockLaunchInProgress = false
     private var lockActivityShownTarget: String? = null
-
     private var managementAuthorizedUntilElapsed = 0L
-
     private var protectionOverlay: View? = null
     private var windowManager: WindowManager? = null
 
@@ -53,202 +40,167 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val accessibilityEvent = event ?: return
+        val e = event ?: return
 
-        when (accessibilityEvent.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_FOCUSED,
-            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> Unit
-            else -> return
-        }
+        // Foreground enforcement must be driven by window transitions, not by
+        // focus/content events. Those events occur constantly while a protected
+        // app is being used and were the source of repeated authentication.
+        if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            e.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) return
 
-        val pkg = accessibilityEvent.packageName
-            ?.toString()
-            ?.takeIf { it.isNotBlank() }
-            ?: return
+        val pkg = e.packageName?.toString()?.takeIf { it.isNotBlank() } ?: return
+        val className = e.className
 
-        val className = accessibilityEvent.className
-
-        /*
-         * Our UI is now on top. The lock/security Activity itself owns the
-         * authentication interaction; never feed our own package back into
-         * the protected-app decision path.
-         */
+        // AppLock is an explicit boundary. Never interpret it as a protected
+        // target, and invalidate any pending Chrome/WhatsApp/etc. request.
         if (pkg == packageName) {
-            lastExternalPackage = null
-            return
-        }
+            // LockActivity/SecurityGateActivity are also part of our package.
+            // While either security UI is visible, the active protected-app
+            // request MUST remain alive so the PIN/pattern/biometric callback
+            // can finish it. A normal AppLock MainActivity event, however, is
+            // an explicit boundary and must cancel any old protected request.
+            val classText = className?.toString().orEmpty()
+            val isSecurityUi = classText.endsWith(".LockActivity") ||
+                classText.endsWith(".SecurityGateActivity")
+            if (isSecurityUi) {
+                // LockActivity/SecurityGateActivity belong to AppLock, but they
+                // are security UI rather than the normal AppLock dashboard.
+                // Never treat them as a request-cancellation boundary.
+                removeProtectionOverlay()
+                return
+            }
 
-        /*
-         * The user can leave the lock Activity with the system Home gesture.
-         * In that case there is no authenticated-return token. Any subsequent
-         * foreground package is a fresh decision boundary.
-         */
-        if (
-            lockActivityShownTarget != null &&
-            pkg != lockActivityShownTarget &&
-            !app.repository.isProtected(pkg)
-        ) {
-            app.lockEngine.resetTransitionState()
-            lockActivityShownTarget = null
-        }
-
-        val previous = lastExternalPackage
-        if (previous != null && previous != pkg) {
-            if (
+            val previous = lastExternalPackage
+            if (previous != null &&
+                previous != packageName &&
                 app.repository.getSessionRule() == SessionRule.AFTER_LEAVING &&
                 app.repository.isProtected(previous)
             ) {
                 app.repository.clearUnlock(previous)
             }
-
-            app.lockEngine.onNonProtectedPackageVisible(previous)
-            lockLaunchInProgress = false
+            app.lockEngine.onAppLockVisible()
+            lastExternalPackage = null
             pendingTargetPackage = null
+            lockLaunchInProgress = false
+            lockActivityShownTarget = null
+            managementAuthorizedUntilElapsed = 0L
+            removeProtectionOverlay()
+            return
         }
 
-        /*
-         * A management authorization is a short-lived session, not a single
-         * AccessibilityEvent. This is required because Settings may emit many
-         * package/window events while the user navigates through App info,
-         * Force stop, Storage/Clear cache and Uninstall surfaces.
-         */
+        val previous = lastExternalPackage
+        val packageChanged = previous != null && previous != pkg
+        if (packageChanged) {
+            if (app.repository.getSessionRule() == SessionRule.AFTER_LEAVING &&
+                app.repository.isProtected(previous!!)
+            ) {
+                app.repository.clearUnlock(previous)
+            }
+            app.lockEngine.onNonProtectedPackageVisible(previous!!)
+            lockLaunchInProgress = false
+            pendingTargetPackage = null
+            lockActivityShownTarget = null
+            removeProtectionOverlay()
+        }
+
+        // If a user leaves the lock UI using Home/back/system UI, invalidate the
+        // pending request. A later protected-app entry must create a new request.
+        if (lockActivityShownTarget != null && pkg != lockActivityShownTarget && !app.repository.isProtected(pkg)) {
+            app.lockEngine.cancelAuthenticationForPackage(lockActivityShownTarget!!)
+            lockActivityShownTarget = null
+            lockLaunchInProgress = false
+            pendingTargetPackage = null
+            removeProtectionOverlay()
+        }
+
         if (
             managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime() &&
-            AntiTamperPolicy.isManagementSurface(
-                pkg,
-                accessibilityEvent.eventType,
-                className
-            )
+            AntiTamperPolicy.isManagementSurface(pkg, e.eventType, className)
         ) {
             lastExternalPackage = pkg
             return
         }
 
-        if (
-            !AntiTamperPolicy.isManagementSurface(
-                pkg,
-                accessibilityEvent.eventType,
-                className
-            )
-        ) {
+        if (!AntiTamperPolicy.isManagementSurface(pkg, e.eventType, className)) {
             managementAuthorizedUntilElapsed = 0L
         }
 
         app.repository.refreshProtectionState()
-        AntiTamperManager.enforceStrongProtection(
-            this,
-            app.repository.protectedPackages()
-        )
+        AntiTamperManager.enforceStrongProtection(this, app.repository.protectedPackages())
 
         if (
-            lockActivityShownTarget == pkg &&
-            !app.lockEngine.state.value.let { state ->
-                state == LockEngine.State.UNLOCKED
-            }
-        ) {
-            /*
-             * Same protected package was returned to after leaving the lock UI
-             * without successful authentication. Re-open the gate instead of
-             * letting LockEngine's old transition marker suppress it.
-             */
-            app.lockEngine.resetTransitionState()
-            lockActivityShownTarget = null
-        }
-
-        if (
-            AntiTamperPolicy.isManagementSurface(
-                pkg,
-                accessibilityEvent.eventType,
-                className
-            ) &&
+            AntiTamperPolicy.isManagementSurface(pkg, e.eventType, className) &&
             app.repository.authenticationConfigured() &&
             app.repository.protectedPackages().isNotEmpty()
         ) {
-            /*
-             * SecurityGateActivity grants a package-scoped token after the
-             * credential is verified. Consume it exactly once and convert it
-             * into a short management navigation session.
-             */
-            if (AntiTamperManager.consumeManagementAccess(pkg)) {
-                managementAuthorizedUntilElapsed =
-                    SystemClock.elapsedRealtime() + MANAGEMENT_SESSION_TTL_MS
-                removeProtectionOverlay()
-                lockLaunchInProgress = false
-                lastExternalPackage = pkg
-                return
-            }
-
-            if (lockLaunchInProgress) {
-                lastExternalPackage = pkg
-                return
-            }
-
-            lockLaunchInProgress = true
-            pendingTargetPackage = pkg
-            showProtectionOverlay()
-            app.lockEngine.markAuthUiShown()
-            launchSecurityGate(pkg)
+            handleManagementSurface(pkg)
             lastExternalPackage = pkg
             return
         }
 
-        /*
-         * If we are retrying the same package after an Activity-start failure,
-         * clear only the engine's transition marker before asking it to decide
-         * again. This fixes the old "tap several times before it locks" state
-         * without resetting authentication throttling.
-         */
-        if (
-            pkg == pendingTargetPackage &&
-            lockActivityShownTarget != pkg
-        ) {
-            app.lockEngine.resetTransitionState()
-        }
-
+        // Do not reset the engine merely because the Activity watchdog fired.
+        // The old implementation did exactly that, destroying the active auth
+        // request and causing valid PINs to be rejected/repeated.
         val shouldLock = app.lockEngine.onPackageVisible(pkg)
         lastExternalPackage = pkg
 
         if (!shouldLock) {
-            /*
-             * A protected app with an already-valid session can continue.
-             * Do not leave a stale barrier from an earlier failed launch.
-             */
-            if (lockActivityShownTarget != pkg) {
-                removeProtectionOverlay()
-            }
+            if (lockActivityShownTarget != pkg) removeProtectionOverlay()
             lockLaunchInProgress = false
             pendingTargetPackage = null
             return
         }
 
-        if (lockLaunchInProgress) {
-            return
-        }
+        // Engine has created the request. Keep exactly one launch in flight.
+        if (lockLaunchInProgress) return
 
         lockLaunchInProgress = true
         pendingTargetPackage = pkg
         lockActivityShownTarget = null
-
-        /*
-         * Barrier first, Activity second.
-         *
-         * The protected app can no longer receive normal touch input while
-         * Android is resolving/starting LockActivity.
-         */
         showProtectionOverlay()
         app.lockEngine.markAuthUiShown()
         launchProtectedAppGate(pkg)
     }
 
+    private fun handleAppLockMainUiShown() {
+        val previous = lastExternalPackage
+        if (previous != null &&
+            app.repository.getSessionRule() == SessionRule.AFTER_LEAVING &&
+            app.repository.isProtected(previous)
+        ) {
+            app.repository.clearUnlock(previous)
+        }
+
+        app.lockEngine.onAppLockVisible()
+        lastExternalPackage = null
+        pendingTargetPackage = null
+        lockLaunchInProgress = false
+        lockActivityShownTarget = null
+        managementAuthorizedUntilElapsed = 0L
+        removeProtectionOverlay()
+    }
+
+    private fun handleManagementSurface(targetPackage: String) {
+        if (AntiTamperManager.consumeManagementAccess(targetPackage)) {
+            managementAuthorizedUntilElapsed = SystemClock.elapsedRealtime() + MANAGEMENT_SESSION_TTL_MS
+            removeProtectionOverlay()
+            lockLaunchInProgress = false
+            pendingTargetPackage = null
+            return
+        }
+        if (lockLaunchInProgress) return
+
+        lockLaunchInProgress = true
+        pendingTargetPackage = targetPackage
+        showProtectionOverlay()
+        app.lockEngine.markAuthUiShown()
+        launchSecurityGate(targetPackage)
+    }
+
     private fun launchProtectedAppGate(targetPackage: String) {
         mainHandler.post {
-            if (!lockLaunchInProgress || pendingTargetPackage != targetPackage) {
-                return@post
-            }
-
+            if (!lockLaunchInProgress || pendingTargetPackage != targetPackage) return@post
             try {
                 startActivity(
                     android.content.Intent(this, LockActivity::class.java).apply {
@@ -261,24 +213,17 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                         putExtra(LockActivity.EXTRA_PACKAGE_NAME, targetPackage)
                     }
                 )
-
-                /*
-                 * If the Activity does not take ownership of the UI shortly
-                 * after launch, retry once. The overlay remains in place, so
-                 * the protected app is never exposed during this recovery.
-                 */
+                // Retry only the Activity start. NEVER reset the engine request.
                 mainHandler.postDelayed({
                     if (
                         lockLaunchInProgress &&
                         pendingTargetPackage == targetPackage &&
                         lockActivityShownTarget != targetPackage
                     ) {
-                        app.lockEngine.resetTransitionState()
                         launchProtectedAppGate(targetPackage)
                     }
                 }, ACTIVITY_START_WATCHDOG_MS)
             } catch (_: Exception) {
-                app.lockEngine.resetTransitionState()
                 mainHandler.postDelayed({
                     if (
                         pendingTargetPackage == targetPackage &&
@@ -293,8 +238,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
     private fun launchSecurityGate(targetPackage: String) {
         mainHandler.post {
-            if (!lockLaunchInProgress) return@post
-
+            if (!lockLaunchInProgress || pendingTargetPackage != targetPackage) return@post
             try {
                 startActivity(
                     android.content.Intent(this, SecurityGateActivity::class.java).apply {
@@ -304,43 +248,27 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                                 android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
                                 android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
                         )
-                        putExtra(
-                            SecurityGateActivity.EXTRA_MANAGEMENT_PACKAGE,
-                            targetPackage
-                        )
+                        putExtra(SecurityGateActivity.EXTRA_MANAGEMENT_PACKAGE, targetPackage)
                     }
                 )
             } catch (_: Exception) {
                 removeProtectionOverlay()
                 lockLaunchInProgress = false
                 pendingTargetPackage = null
-                lockActivityShownTarget = null
-                app.lockEngine.resetTransitionState()
             }
         }
     }
 
-    /**
-     * Short-lived full-screen accessibility barrier.
-     *
-     * TYPE_ACCESSIBILITY_OVERLAY is provided specifically for an active
-     * AccessibilityService and does not require SYSTEM_ALERT_WINDOW.
-     */
     private fun showProtectionOverlay() {
         if (protectionOverlay != null) return
-
         val wm = windowManager ?: return
-
         val overlay = FrameLayout(this).apply {
-            // Transparent, but still touch-blocking. This removes the black
-            // transition flash while keeping the fail-closed barrier.
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = true
             isFocusable = false
             setOnTouchListener { _: View, _: MotionEvent -> true }
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -349,21 +277,18 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-        }
-
+        ).apply { gravity = Gravity.TOP or Gravity.START }
         runCatching {
             wm.addView(overlay, params)
             protectionOverlay = overlay
         }
     }
 
-
-    /** Called by LockActivity only after its window has been created successfully. */
     fun onLockActivityShown(targetPackage: String) {
         if (targetPackage.isBlank()) return
-        if (pendingTargetPackage == targetPackage) {
+        if (pendingTargetPackage == targetPackage &&
+            app.lockEngine.isAuthenticationRequestActive(targetPackage)
+        ) {
             lockActivityShownTarget = targetPackage
             lockLaunchInProgress = false
             pendingTargetPackage = null
@@ -374,37 +299,27 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     fun removeProtectionOverlay() {
         val overlay = protectionOverlay ?: return
         protectionOverlay = null
-
-        runCatching {
-            windowManager?.removeViewImmediate(overlay)
-        }
+        runCatching { windowManager?.removeViewImmediate(overlay) }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-
         serviceInfo = serviceInfo.apply {
             eventTypes =
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOWS_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                    AccessibilityEvent.TYPE_VIEW_FOCUSED or
-                    AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
-            notificationTimeout = 0L
+                    AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            notificationTimeout = 100L
         }
-
+        mainHandler.removeCallbacksAndMessages(null)
         lastExternalPackage = null
         pendingTargetPackage = null
-        lockActivityShownTarget = null
         lockLaunchInProgress = false
+        lockActivityShownTarget = null
         managementAuthorizedUntilElapsed = 0L
         removeProtectionOverlay()
         app.lockEngine.resetTransitionState()
         app.repository.refreshProtectionState()
-        AntiTamperManager.enforceStrongProtection(
-            this,
-            app.repository.protectedPackages()
-        )
+        AntiTamperManager.enforceStrongProtection(this, app.repository.protectedPackages())
     }
 
     override fun onInterrupt() {
@@ -412,8 +327,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         removeProtectionOverlay()
         lastExternalPackage = null
         pendingTargetPackage = null
-        lockActivityShownTarget = null
         lockLaunchInProgress = false
+        lockActivityShownTarget = null
         managementAuthorizedUntilElapsed = 0L
         app.lockEngine.resetTransitionState()
         app.repository.refreshProtectionState()
@@ -422,9 +337,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
         removeProtectionOverlay()
-        if (instance === this) {
-            instance = null
-        }
+        if (instance === this) instance = null
         super.onDestroy()
     }
 
@@ -433,8 +346,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         const val ACTIVITY_START_WATCHDOG_MS = 700L
         const val RETRY_DELAY_MS = 120L
 
-        @Volatile
-        private var instance: AppDetectionAccessibilityService? = null
+        @Volatile private var instance: AppDetectionAccessibilityService? = null
 
         fun releaseForegroundBarrier() {
             instance?.removeProtectionOverlay()
@@ -442,6 +354,10 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
         fun notifyLockActivityShown(targetPackage: String) {
             instance?.onLockActivityShown(targetPackage)
+        }
+
+        fun notifyAppLockMainUiShown() {
+            instance?.handleAppLockMainUiShown()
         }
     }
 }

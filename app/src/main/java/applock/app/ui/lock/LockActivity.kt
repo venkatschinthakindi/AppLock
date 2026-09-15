@@ -13,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 class LockActivity : FragmentActivity() {
-
     companion object {
         const val EXTRA_PACKAGE_NAME = "protected_package"
     }
@@ -24,41 +23,30 @@ class LockActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
-
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
         window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
 
-        packageNameTarget =
-            intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
-
+        packageNameTarget = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
         val app = application as AppLockApplication
 
-        if (!isValidTarget(app, packageNameTarget)) {
+        if (!isValidTarget(app, packageNameTarget) ||
+            !app.lockEngine.isAuthenticationRequestActive(packageNameTarget)
+        ) {
             AppDetectionAccessibilityService.releaseForegroundBarrier()
+            app.lockEngine.cancelAuthenticationForPackage(packageNameTarget)
             finishAndRemoveTask()
             return
         }
 
         app.lockEngine.markAuthUiShown()
-
-        /*
-         * The service keeps a touch-blocking accessibility overlay over the
-         * protected app until this Activity has actually been created.
-         *
-         * This callback is intentionally made from the Activity rather than
-         * from the AccessibilityService's startActivity() call. That removes
-         * the old Activity-start race from the security state machine.
-         */
-        AppDetectionAccessibilityService.notifyLockActivityShown(
-            packageNameTarget
-        )
+        AppDetectionAccessibilityService.notifyLockActivityShown(packageNameTarget)
 
         onBackPressedDispatcher.addCallback(
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    // Never expose the protected application through Back.
+                    // Do not expose the protected application through Back.
                 }
             }
         )
@@ -66,24 +54,37 @@ class LockActivity : FragmentActivity() {
         setContent {
             LockScreen(
                 packageName = packageNameTarget,
-                onSuccess = {
-                    completeAuthentication(packageNameTarget)
-                }
+                onSuccess = { completeAuthentication(packageNameTarget) }
             )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (packageNameTarget.isBlank()) return
+
+        val app = application as AppLockApplication
+        if (!isValidTarget(app, packageNameTarget) ||
+            (!app.lockEngine.isAuthenticationRequestActive(packageNameTarget) &&
+                !app.lockEngine.isAuthorizedForLaunch(packageNameTarget))
+        ) {
+            AppDetectionAccessibilityService.releaseForegroundBarrier()
+            app.lockEngine.cancelAuthenticationForPackage(packageNameTarget)
+            finishAndRemoveTask()
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-
-        val newTarget =
-            intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
-
+        val newTarget = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
         val app = application as AppLockApplication
 
-        if (!isValidTarget(app, newTarget)) {
+        if (!isValidTarget(app, newTarget) ||
+            !app.lockEngine.isAuthenticationRequestActive(newTarget)
+        ) {
             AppDetectionAccessibilityService.releaseForegroundBarrier()
+            app.lockEngine.cancelAuthenticationForPackage(newTarget)
             finishAndRemoveTask()
             return
         }
@@ -91,69 +92,52 @@ class LockActivity : FragmentActivity() {
         if (!authenticationCompleted) {
             packageNameTarget = newTarget
             app.lockEngine.markAuthUiShown()
-            AppDetectionAccessibilityService.notifyLockActivityShown(
-                newTarget
-            )
+            AppDetectionAccessibilityService.notifyLockActivityShown(newTarget)
         }
     }
 
-    private fun isValidTarget(
-        app: AppLockApplication,
-        targetPackage: String
-    ): Boolean {
-        if (targetPackage.isBlank()) return false
-
-        if (!app.repository.isProtected(targetPackage)) {
-            return false
+    override fun onDestroy() {
+        if (!authenticationCompleted) {
+            AppDetectionAccessibilityService.releaseForegroundBarrier()
+            if (packageNameTarget.isNotBlank()) {
+                val app = application as AppLockApplication
+                app.lockEngine.cancelAuthenticationForPackage(packageNameTarget)
+            }
         }
+        super.onDestroy()
+    }
 
-        return packageManager.getLaunchIntentForPackage(
-            targetPackage
-        ) != null
+    private fun isValidTarget(app: AppLockApplication, targetPackage: String): Boolean {
+        if (targetPackage.isBlank()) return false
+        if (targetPackage == packageName) return false
+        if (!app.repository.isProtected(targetPackage)) return false
+        return packageManager.getLaunchIntentForPackage(targetPackage) != null
     }
 
     private fun completeAuthentication(targetPackage: String) {
         if (authenticationCompleted) return
-
         val app = application as AppLockApplication
 
-        if (!isValidTarget(app, targetPackage)) {
-            app.lockEngine.resetTransitionState()
+        if (!isValidTarget(app, targetPackage) ||
+            !app.lockEngine.isAuthorizedForLaunch(targetPackage)
+        ) {
+            app.lockEngine.cancelAuthenticationForPackage(targetPackage)
             AppDetectionAccessibilityService.releaseForegroundBarrier()
             finishAndRemoveTask()
             return
         }
 
-        /*
-         * Unlock is recorded before launching the target. The next foreground
-         * event is therefore consumed by the engine's authenticated-return
-         * token instead of immediately opening the lock again.
-         */
-        if (!app.lockEngine.unlock(targetPackage)) {
-            return
-        }
-
-        val launchIntent =
-            packageManager.getLaunchIntentForPackage(targetPackage)
-
+        val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
         if (launchIntent == null) {
-            app.lockEngine.resetTransitionState()
+            app.lockEngine.cancelAuthenticationForPackage(targetPackage)
             AppDetectionAccessibilityService.releaseForegroundBarrier()
             finishAndRemoveTask()
             return
         }
 
         authenticationCompleted = true
-
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
         startActivity(launchIntent)
-
-        /*
-         * The overlay was already released when this Activity became visible.
-         * The engine's one-time authenticated return token now protects the
-         * transition back to the target application.
-         */
         finishAndRemoveTask()
     }
 }

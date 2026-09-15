@@ -5,6 +5,7 @@
 # -------------------------
 # Gradle
 # -------------------------
+app\build\**
 .gradle/
 **/.gradle/
 app\build/
@@ -201,3 +202,4 @@ dist/
 # Signing secrets belong in GitHub Actions Secrets,
 # NOT in the repository.
 # ============================================================
+.gradle/file-system.probe
