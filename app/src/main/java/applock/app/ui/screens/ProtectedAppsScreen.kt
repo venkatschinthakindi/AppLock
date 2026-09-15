@@ -39,15 +39,35 @@ import kotlinx.coroutines.delay
 @Composable
 fun ProtectedAppsScreen() {
     val app = LocalContext.current.applicationContext as AppLockApplication
-    if (app.repository.hasCredential()) {
-        SecurityGateScreen(
-            title = "Protected apps are secured",
-            description = "Authenticate before adding or removing apps from the protection list."
-        ) {
-            ProtectedAppsEditor()
-        }
-    } else {
+
+    if (!app.repository.hasCredential()) {
         ProtectedAppsEditor()
+        return
+    }
+
+    /*
+     * Use the current security gate from ui.lock explicitly.
+     *
+     * The previous implementation resolved SecurityGateScreen from this
+     * package (ui.screens), which was an older gate API and could display
+     * "Current PIN" even when the configured authentication method was
+     * Pattern.
+     *
+     * The current SecurityGateScreen owns authentication-method selection
+     * through AppLockRepository and reports success through this callback.
+     */
+    var authenticated by remember {
+        mutableStateOf(false)
+    }
+
+    if (authenticated) {
+        ProtectedAppsEditor()
+    } else {
+        applock.app.ui.lock.SecurityGateScreen(
+            onAuthenticated = {
+                authenticated = true
+            }
+        )
     }
 }
 
