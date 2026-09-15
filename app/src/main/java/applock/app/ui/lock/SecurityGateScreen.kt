@@ -1,10 +1,12 @@
 package applock.app.ui.lock
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
 
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,10 +45,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -55,6 +57,8 @@ import applock.app.domain.AuthMethod
 import applock.app.engine.LockEngine
 import applock.app.security.SecurityAuthenticator
 import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 @Composable
 fun SecurityGateScreen(
@@ -70,6 +74,26 @@ fun SecurityGateScreen(
     var forcePin by remember { mutableStateOf(false) }
     var pattern by remember { mutableStateOf(emptyList<Int>()) }
     var lockoutRemaining by remember { mutableStateOf(0) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var method by remember { mutableStateOf(repo.getAuthMethod()) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val latest = repo.getAuthMethod()
+                if (latest != method) {
+                    method = latest
+                    forcePin = false
+                    pin = ""
+                    pattern = emptyList()
+                    error = ""
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
         while (SecurityAuthenticator.isBlocked()) {
@@ -199,9 +223,6 @@ fun SecurityGateScreen(
                 .build()
         )
     }
-
-    val method =
-        repo.getAuthMethod()
 
     val showBiometric =
         method == AuthMethod.BIOMETRIC && !forcePin
@@ -397,15 +418,15 @@ fun SecurityGateScreen(
                             Modifier.height(14.dp)
                         )
 
-                        PatternGateGrid(
+                        PatternSetupGrid(
                             selected = pattern,
-                            onChanged = { next ->
-                                pattern = next
-
-                                if (next.size >= 4) {
+                            onChanged = { completed ->
+                                if (completed.size >= 4) {
                                     authenticatePattern(
-                                        next.joinToString("-")
+                                        completed.joinToString("-")
                                     )
+                                    pattern = emptyList()
+                                } else {
                                     pattern = emptyList()
                                 }
                             }
@@ -619,19 +640,13 @@ fun SecurityGateScreen(
 }
 
 @Composable
-private fun PatternGateGrid(
+private fun PatternSetupGrid(
     selected: List<Int>,
     onChanged: (List<Int>) -> Unit
 ) {
-    var dragSelection by remember(selected) {
-        mutableStateOf(selected)
-    }
-    var dragPosition by remember {
-        mutableStateOf<Offset?>(null)
-    }
-    var isDragging by remember {
-        mutableStateOf(false)
-    }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragSelection by remember { mutableStateOf(selected) }
+    var dragPosition by remember { mutableStateOf<Offset?>(null) }
 
     LaunchedEffect(selected) {
         if (!isDragging) {
@@ -639,114 +654,120 @@ private fun PatternGateGrid(
         }
     }
 
+    fun pointFor(
+        index: Int,
+        width: Float,
+        height: Float
+    ): Offset {
+        val row = index / 3
+        val column = index % 3
+
+        return Offset(
+            x = width * (0.20f + column * 0.30f),
+            y = height * (0.20f + row * 0.30f)
+        )
+    }
+
+    fun distanceBetween(
+        first: Offset,
+        second: Offset
+    ): Float {
+        val dx = first.x - second.x
+        val dy = first.y - second.y
+        return kotlin.math.sqrt(dx * dx + dy * dy)
+    }
+
+    fun hitTest(
+        position: Offset,
+        width: Float,
+        height: Float
+    ): Int? {
+        val threshold = minOf(width, height) * 0.14f
+
+        var bestIndex: Int? = null
+        var bestDistance = Float.MAX_VALUE
+
+        repeat(9) { index ->
+            val point = pointFor(index, width, height)
+            val distance = distanceBetween(position, point)
+
+            if (distance <= threshold && distance < bestDistance) {
+                bestIndex = index
+                bestDistance = distance
+            }
+        }
+
+        return bestIndex
+    }
+
+    fun appendPoint(
+        current: List<Int>,
+        index: Int
+    ): List<Int> {
+        if (current.contains(index)) {
+            return current
+        }
+
+        val result = current.toMutableList()
+        val previous = current.lastOrNull()
+
+        if (previous != null) {
+            val previousRow = previous / 3
+            val previousColumn = previous % 3
+            val row = index / 3
+            val column = index % 3
+
+            val rowDelta = row - previousRow
+            val columnDelta = column - previousColumn
+
+            val hasSkippedMiddlePoint =
+                (
+                    kotlin.math.abs(rowDelta) == 2 &&
+                        columnDelta == 0
+                    ) ||
+                    (
+                        kotlin.math.abs(columnDelta) == 2 &&
+                            rowDelta == 0
+                        ) ||
+                    (
+                        kotlin.math.abs(rowDelta) == 2 &&
+                            kotlin.math.abs(columnDelta) == 2
+                        )
+
+            if (hasSkippedMiddlePoint) {
+                val middleRow = (previousRow + row) / 2
+                val middleColumn = (previousColumn + column) / 2
+                val middle = middleRow * 3 + middleColumn
+
+                if (!result.contains(middle)) {
+                    result.add(middle)
+                }
+            }
+        }
+
+        result.add(index)
+        return result
+    }
+
     val primary = MaterialTheme.colorScheme.primary
-    val inactive =
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val inactive = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     val background = MaterialTheme.colorScheme.background
 
     Canvas(
         modifier = Modifier
             .size(290.dp)
             .pointerInput(Unit) {
-                fun pointFor(index: Int): Offset {
-                    val column = index % 3
-                    val row = index / 3
-                    return Offset(
-                        x = size.width * when (column) {
-                            0 -> 0.20f
-                            1 -> 0.50f
-                            else -> 0.80f
-                        },
-                        y = size.height * when (row) {
-                            0 -> 0.20f
-                            1 -> 0.50f
-                            else -> 0.80f
-                        }
-                    )
-                }
-
-                fun hitTest(position: Offset): Int? {
-                    val threshold = minOf(size.width, size.height).toFloat() * 0.19f
-                    var bestIndex: Int? = null
-                    var bestDistance = Float.MAX_VALUE
-
-                    repeat(9) { index ->
-                        val distance =
-                            (position - pointFor(index)).getDistance()
-                        if (
-                            distance <= threshold &&
-                            distance < bestDistance
-                        ) {
-                            bestDistance = distance
-                            bestIndex = index
-                        }
-                    }
-
-                    return bestIndex
-                }
-
-                fun middlePointBetween(from: Int, to: Int): Int? {
-                    val fromRow = from / 3
-                    val fromCol = from % 3
-                    val toRow = to / 3
-                    val toCol = to % 3
-
-                    val rowDelta = toRow - fromRow
-                    val colDelta = toCol - fromCol
-
-                    if (
-                        kotlin.math.abs(rowDelta) == 2 &&
-                        colDelta == 0
-                    ) {
-                        return (fromRow + toRow) / 2 * 3 + fromCol
-                    }
-
-                    if (
-                        kotlin.math.abs(colDelta) == 2 &&
-                        rowDelta == 0
-                    ) {
-                        return fromRow * 3 + (fromCol + toCol) / 2
-                    }
-
-                    if (
-                        kotlin.math.abs(rowDelta) == 2 &&
-                        kotlin.math.abs(colDelta) == 2
-                    ) {
-                        return (fromRow + toRow) / 2 * 3 +
-                            (fromCol + toCol) / 2
-                    }
-
-                    return null
-                }
-
-                fun appendPoint(
-                    current: List<Int>,
-                    index: Int
-                ): List<Int> {
-                    if (current.contains(index)) {
-                        return current
-                    }
-
-                    val last = current.lastOrNull()
-                        ?: return listOf(index)
-
-                    val middle = middlePointBetween(last, index)
-                    return if (
-                        middle != null &&
-                        !current.contains(middle)
-                    ) {
-                        current + middle + index
-                    } else {
-                        current + index
-                    }
-                }
-
                 detectDragGestures(
                     onDragStart = { position ->
-                        val index = hitTest(position)
+                        val index = hitTest(
+                            position = position,
+                            width = size.width.toFloat(),
+                            height = size.height.toFloat()
+                        )
+
                         if (index != null) {
                             isDragging = true
-                            dragSelection = listOf(index)
+                            dragSelection = appendPoint(emptyList(), index)
                             dragPosition = position
                         }
                     },
@@ -756,24 +777,27 @@ private fun PatternGateGrid(
                         }
 
                         dragPosition = change.position
-                        val index = hitTest(change.position)
+
+                        val index = hitTest(
+                            position = change.position,
+                            width = size.width.toFloat(),
+                            height = size.height.toFloat()
+                        )
+
                         if (index != null) {
-                            dragSelection = appendPoint(
-                                dragSelection,
-                                index
-                            )
+                            dragSelection = appendPoint(dragSelection, index)
                         }
                     },
                     onDragEnd = {
                         if (isDragging) {
-                            val completed = dragSelection
                             isDragging = false
                             dragPosition = null
 
-                            if (completed.size >= 4) {
-                                onChanged(completed)
+                            val completedPattern = dragSelection
+
+                            if (completedPattern.size >= 4) {
+                                onChanged(completedPattern)
                             } else {
-                                dragSelection = emptyList()
                                 onChanged(emptyList())
                             }
                         }
@@ -781,7 +805,7 @@ private fun PatternGateGrid(
                     onDragCancel = {
                         isDragging = false
                         dragPosition = null
-                        dragSelection = emptyList()
+                        dragSelection = selected
                     }
                 )
             }
@@ -789,55 +813,37 @@ private fun PatternGateGrid(
         val nodeRadius = size.minDimension * 0.055f
         val selectedRadius = nodeRadius * 1.35f
 
-        fun pointForCanvas(index: Int): Offset {
-            val column = index % 3
-            val row = index / 3
-            return Offset(
-                x = size.width * when (column) {
-                    0 -> 0.20f
-                    1 -> 0.50f
-                    else -> 0.80f
-                },
-                y = size.height * when (row) {
-                    0 -> 0.20f
-                    1 -> 0.50f
-                    else -> 0.80f
-                }
-            )
-        }
-
         if (dragSelection.size >= 2) {
             dragSelection.zipWithNext().forEach { (from, to) ->
                 drawLine(
                     color = primary,
-                    start = pointForCanvas(from),
-                    end = pointForCanvas(to),
+                    start = pointFor(from, size.width, size.height),
+                    end = pointFor(to, size.width, size.height),
                     strokeWidth = nodeRadius * 0.70f
                 )
             }
         }
 
-        if (
-            isDragging &&
-            dragPosition != null &&
-            dragSelection.isNotEmpty()
-        ) {
+        if (isDragging && dragPosition != null && dragSelection.isNotEmpty()) {
             drawLine(
                 color = primary.copy(alpha = 0.65f),
-                start = pointForCanvas(dragSelection.last()),
+                start = pointFor(
+                    dragSelection.last(),
+                    size.width,
+                    size.height
+                ),
                 end = dragPosition!!,
                 strokeWidth = nodeRadius * 0.60f
             )
         }
 
         repeat(9) { index ->
-            val point = pointForCanvas(index)
+            val point = pointFor(index, size.width, size.height)
             val isSelected = dragSelection.contains(index)
 
             drawCircle(
                 color = if (isSelected) primary else inactive,
-                radius =
-                    if (isSelected) selectedRadius else nodeRadius,
+                radius = if (isSelected) selectedRadius else nodeRadius,
                 center = point
             )
 

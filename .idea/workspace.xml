@@ -15,7 +15,10 @@
       <change beforePath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/lock/SecurityGateScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/lock/SecurityGateScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/ProtectedAppsScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/ProtectedAppsScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SecurityGateScreen.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SecuritySetupScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SecuritySetupScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SettingsScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SettingsScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SmartLockScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/screens/SmartLockScreen.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

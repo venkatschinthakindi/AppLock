@@ -25,18 +25,25 @@ import applock.app.domain.SessionRule
 fun SmartLockScreen() {
     val app = LocalContext.current.applicationContext as AppLockApplication
 
-    if (app.repository.hasCredential()) {
-        SecurityGateScreen(
-            title = "Session rules are secured",
-            description = "Authenticate before changing when protected apps can remain unlocked."
-        ) {
-            SmartLockEditor()
-        }
-    } else {
+    if (!app.repository.hasCredential()) {
         SmartLockEditor()
+        return
+    }
+
+    var authenticated by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+
+    if (authenticated) {
+        SmartLockEditor()
+    } else {
+        applock.app.ui.lock.SecurityGateScreen(
+            onAuthenticated = {
+                authenticated = true
+            }
+        )
     }
 }
-
 @Composable
 private fun SmartLockEditor() {
     val app = LocalContext.current.applicationContext as AppLockApplication

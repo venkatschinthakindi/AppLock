@@ -1,11 +1,13 @@
 package applock.app.ui.screens
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGestures
 
 import android.content.Context
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,16 +41,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,6 +61,8 @@ import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
 import applock.app.data.AppLockRepository
 import applock.app.domain.AuthMethod
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 @Composable
 fun SecuritySetupScreen() {
@@ -66,17 +70,47 @@ fun SecuritySetupScreen() {
     val app = context.applicationContext as AppLockApplication
     val repo = app.repository
 
-    val currentMethod = remember { repo.getAuthMethod() }
-    val alreadyConfigured = remember { repo.authenticationConfigured() }
+    var currentMethod by remember { mutableStateOf(repo.getAuthMethod()) }
+    var alreadyConfigured by remember { mutableStateOf(repo.authenticationConfigured()) }
 
     var authorized by remember { mutableStateOf(!alreadyConfigured) }
-    var usingPinFallback by remember {
-        mutableStateOf(currentMethod != AuthMethod.BIOMETRIC)
-    }
+    var usingPinFallback by remember { mutableStateOf(false) }
 
     var gatePin by remember { mutableStateOf("") }
     var gateError by remember { mutableStateOf("") }
     var gatePattern by remember { mutableStateOf(emptyList<Int>()) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val latestMethod = repo.getAuthMethod()
+                val latestConfigured = repo.authenticationConfigured()
+
+                if (latestMethod != currentMethod) {
+                    currentMethod = latestMethod
+                    usingPinFallback = false
+                    gatePin = ""
+                    gatePattern = emptyList()
+                    gateError = ""
+                }
+
+                if (latestConfigured != alreadyConfigured) {
+                    alreadyConfigured = latestConfigured
+                    if (!latestConfigured) {
+                        authorized = true
+                        gatePin = ""
+                        gatePattern = emptyList()
+                        gateError = ""
+                    }
+                }
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(alreadyConfigured, currentMethod) {
         if (
@@ -116,17 +150,18 @@ fun SecuritySetupScreen() {
                     gateError = "Incorrect PIN"
                 }
             },
-            onPatternChange = { next ->
-                gatePattern = next
-
-                if (next.size >= 4) {
-                    if (repo.verifyPattern(next.joinToString("-"))) {
+            onPatternChange = { completed ->
+                if (completed.size >= 4) {
+                    if (repo.verifyPattern(completed.joinToString("-"))) {
                         authorized = true
                         gatePattern = emptyList()
+                        gateError = ""
                     } else {
                         gatePattern = emptyList()
                         gateError = "Incorrect pattern"
                     }
+                } else {
+                    gatePattern = emptyList()
                 }
             },
             onUseBiometric = {
@@ -883,8 +918,8 @@ private fun PatternSetupGrid(
         }
 
         val result = current.toMutableList()
-
         val previous = current.lastOrNull()
+
         if (previous != null) {
             val previousRow = previous / 3
             val previousColumn = previous % 3
@@ -941,10 +976,7 @@ private fun PatternSetupGrid(
 
                         if (index != null) {
                             isDragging = true
-                            dragSelection = appendPoint(
-                                emptyList(),
-                                index
-                            )
+                            dragSelection = appendPoint(emptyList(), index)
                             dragPosition = position
                         }
                     },
@@ -962,10 +994,7 @@ private fun PatternSetupGrid(
                         )
 
                         if (index != null) {
-                            dragSelection = appendPoint(
-                                dragSelection,
-                                index
-                            )
+                            dragSelection = appendPoint(dragSelection, index)
                         }
                     },
                     onDragEnd = {
@@ -1018,11 +1047,7 @@ private fun PatternSetupGrid(
         }
 
         repeat(9) { index ->
-            val point = pointFor(
-                index,
-                size.width,
-                size.height
-            )
+            val point = pointFor(index, size.width, size.height)
             val isSelected = dragSelection.contains(index)
 
             drawCircle(

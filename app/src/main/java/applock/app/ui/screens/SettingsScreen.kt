@@ -45,18 +45,25 @@ private const val SUPPORT_EMAIL =
 fun SettingsScreen() {
     val app = LocalContext.current.applicationContext as AppLockApplication
 
-    if (app.repository.hasCredential()) {
-        SecurityGateScreen(
-            title = "AppLock settings are secured",
-            description = "Authenticate before changing system-access paths or security state."
-        ) {
-            SettingsEditor()
-        }
-    } else {
+    if (!app.repository.hasCredential()) {
         SettingsEditor()
+        return
+    }
+
+        val authenticated = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+
+    if (authenticated.value) {
+        SettingsEditor()
+    } else {
+        applock.app.ui.lock.SecurityGateScreen(
+            onAuthenticated = {
+                authenticated.value = true
+            }
+        )
     }
 }
-
 @Composable
 private fun SettingsEditor() {
     val context = LocalContext.current
