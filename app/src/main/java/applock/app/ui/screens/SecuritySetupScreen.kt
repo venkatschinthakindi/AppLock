@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +46,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -814,36 +818,225 @@ private fun PatternSetupGrid(
     selected: List<Int>,
     onChanged: (List<Int>) -> Unit
 ) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        repeat(3) { row ->
-            Row(
-                horizontalArrangement =
-                    Arrangement.spacedBy(10.dp)
-            ) {
-                repeat(3) { column ->
-                    val index = row * 3 + column
+    var isDragging by remember { mutableStateOf(false) }
+    var dragSelection by remember { mutableStateOf(selected) }
+    var dragPosition by remember { mutableStateOf<Offset?>(null) }
 
-                    Button(
-                        onClick = {
-                            if (!selected.contains(index)) {
-                                onChanged(selected + index)
-                            }
-                        },
-                        modifier = Modifier.size(60.dp),
-                        shape = CircleShape
-                    ) {
-                        Text(
-                            if (selected.contains(index)) {
-                                "●"
-                            } else {
-                                ""
-                            }
+    LaunchedEffect(selected) {
+        if (!isDragging) {
+            dragSelection = selected
+        }
+    }
+
+    fun pointFor(
+        index: Int,
+        width: Float,
+        height: Float
+    ): Offset {
+        val row = index / 3
+        val column = index % 3
+
+        return Offset(
+            x = width * (0.20f + column * 0.30f),
+            y = height * (0.20f + row * 0.30f)
+        )
+    }
+
+    fun distanceBetween(
+        first: Offset,
+        second: Offset
+    ): Float {
+        val dx = first.x - second.x
+        val dy = first.y - second.y
+        return kotlin.math.sqrt(dx * dx + dy * dy)
+    }
+
+    fun hitTest(
+        position: Offset,
+        width: Float,
+        height: Float
+    ): Int? {
+        val threshold = minOf(width, height) * 0.14f
+
+        var bestIndex: Int? = null
+        var bestDistance = Float.MAX_VALUE
+
+        repeat(9) { index ->
+            val point = pointFor(index, width, height)
+            val distance = distanceBetween(position, point)
+
+            if (distance <= threshold && distance < bestDistance) {
+                bestIndex = index
+                bestDistance = distance
+            }
+        }
+
+        return bestIndex
+    }
+
+    fun appendPoint(
+        current: List<Int>,
+        index: Int
+    ): List<Int> {
+        if (current.contains(index)) {
+            return current
+        }
+
+        val result = current.toMutableList()
+
+        val previous = current.lastOrNull()
+        if (previous != null) {
+            val previousRow = previous / 3
+            val previousColumn = previous % 3
+            val row = index / 3
+            val column = index % 3
+
+            val rowDelta = row - previousRow
+            val columnDelta = column - previousColumn
+
+            val hasSkippedMiddlePoint =
+                (
+                    kotlin.math.abs(rowDelta) == 2 &&
+                        columnDelta == 0
+                    ) ||
+                    (
+                        kotlin.math.abs(columnDelta) == 2 &&
+                            rowDelta == 0
+                        ) ||
+                    (
+                        kotlin.math.abs(rowDelta) == 2 &&
+                            kotlin.math.abs(columnDelta) == 2
                         )
-                    }
+
+            if (hasSkippedMiddlePoint) {
+                val middleRow = (previousRow + row) / 2
+                val middleColumn = (previousColumn + column) / 2
+                val middle = middleRow * 3 + middleColumn
+
+                if (!result.contains(middle)) {
+                    result.add(middle)
                 }
+            }
+        }
+
+        result.add(index)
+        return result
+    }
+
+    val primary = MaterialTheme.colorScheme.primary
+    val inactive = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val background = MaterialTheme.colorScheme.background
+
+    Canvas(
+        modifier = Modifier
+            .size(290.dp)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { position ->
+                        val index = hitTest(
+                            position = position,
+                            width = size.width.toFloat(),
+                            height = size.height.toFloat()
+                        )
+
+                        if (index != null) {
+                            isDragging = true
+                            dragSelection = appendPoint(
+                                emptyList(),
+                                index
+                            )
+                            dragPosition = position
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        if (!isDragging) {
+                            return@detectDragGestures
+                        }
+
+                        dragPosition = change.position
+
+                        val index = hitTest(
+                            position = change.position,
+                            width = size.width.toFloat(),
+                            height = size.height.toFloat()
+                        )
+
+                        if (index != null) {
+                            dragSelection = appendPoint(
+                                dragSelection,
+                                index
+                            )
+                        }
+                    },
+                    onDragEnd = {
+                        if (isDragging) {
+                            isDragging = false
+                            dragPosition = null
+
+                            val completedPattern = dragSelection
+
+                            if (completedPattern.size >= 4) {
+                                onChanged(completedPattern)
+                            } else {
+                                onChanged(emptyList())
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        dragPosition = null
+                        dragSelection = selected
+                    }
+                )
+            }
+    ) {
+        val nodeRadius = size.minDimension * 0.055f
+        val selectedRadius = nodeRadius * 1.35f
+
+        if (dragSelection.size >= 2) {
+            dragSelection.zipWithNext().forEach { (from, to) ->
+                drawLine(
+                    color = primary,
+                    start = pointFor(from, size.width, size.height),
+                    end = pointFor(to, size.width, size.height),
+                    strokeWidth = nodeRadius * 0.70f
+                )
+            }
+        }
+
+        if (isDragging && dragPosition != null && dragSelection.isNotEmpty()) {
+            drawLine(
+                color = primary.copy(alpha = 0.65f),
+                start = pointFor(
+                    dragSelection.last(),
+                    size.width,
+                    size.height
+                ),
+                end = dragPosition!!,
+                strokeWidth = nodeRadius * 0.60f
+            )
+        }
+
+        repeat(9) { index ->
+            val point = pointFor(
+                index,
+                size.width,
+                size.height
+            )
+            val isSelected = dragSelection.contains(index)
+
+            drawCircle(
+                color = if (isSelected) primary else inactive,
+                radius = if (isSelected) selectedRadius else nodeRadius,
+                center = point
+            )
+
+            if (isSelected) {
+                drawCircle(
+                    color = background,
+                    radius = nodeRadius * 0.38f,
+                    center = point
+                )
             }
         }
     }

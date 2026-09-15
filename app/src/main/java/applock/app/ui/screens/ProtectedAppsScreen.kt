@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,8 +28,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
+import applock.app.data.LaunchableAppCatalog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 
 @Composable
@@ -49,18 +54,37 @@ fun ProtectedAppsScreen() {
 @Composable
 private fun ProtectedAppsEditor() {
     val app = LocalContext.current.applicationContext as AppLockApplication
+    val lifecycleOwner = LocalLifecycleOwner.current
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("all") }
     var apps by remember { mutableStateOf(emptyList<applock.app.domain.ProtectedApp>()) }
 
-    // Refresh every time this screen is entered and once more shortly after
-    // entry. This catches packages that finish installing/enabling while the
-    // screen is already visible without requiring QUERY_ALL_PACKAGES.
+    fun refreshApps() {
+        app.repository.refreshProtectionState()
+        apps = LaunchableAppCatalog.load(
+            context = app,
+            protectedPackages = app.repository.protectedPackages()
+        )
+    }
+
+    // Refresh on entry, shortly after entry, and every time AppLock returns
+    // to the foreground. This keeps the launcher-visible catalog current after
+    // installs, uninstalls, updates and launcher changes without QUERY_ALL_PACKAGES.
     LaunchedEffect(Unit) {
-        repeat(2) { pass ->
-            app.repository.refreshProtectionState()
-            apps = app.repository.launchableApps()
-            if (pass == 0) delay(350L)
+        refreshApps()
+        delay(350L)
+        refreshApps()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshApps()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -115,7 +139,11 @@ private fun ProtectedAppsEditor() {
                             checked = item.protected,
                             onCheckedChange = { enabled ->
                                 app.repository.setProtected(item.packageName, enabled)
-                                apps = app.repository.launchableApps()
+                                // Protection-list changes are security-state
+                                // boundaries. Do not let an old foreground
+                                // authorization survive a settings change.
+                                app.lockEngine.resetTransitionState()
+                                refreshApps()
                             }
                         )
                     }

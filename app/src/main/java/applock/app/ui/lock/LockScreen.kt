@@ -2,22 +2,22 @@ package applock.app.ui.lock
 
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Check
@@ -32,27 +32,36 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
-import applock.app.ads.BannerAd
 import applock.app.domain.AuthMethod
 import applock.app.engine.LockEngine
 import kotlinx.coroutines.delay
 import java.security.SecureRandom
+import kotlin.math.abs
+import kotlin.math.sqrt
 
+/**
+ * Authentication UI for one exact protected package.
+ *
+ * Security rules:
+ * - No ads, billing, network or sponsor content are rendered here.
+ * - Authentication is accepted only by the request-bound LockEngine.
+ * - The pattern input is a real drag gesture, not a sequence of unrelated taps.
+ */
 @Composable
 fun LockScreen(
     packageName: String,
@@ -61,27 +70,13 @@ fun LockScreen(
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
     val repo = app.repository
-    val theme by repo.theme.collectAsState()
+
+    var pin by remember(packageName) { mutableStateOf("") }
+    var error by remember(packageName) { mutableStateOf("") }
+    var forcePin by remember(packageName) { mutableStateOf(false) }
+    var lockoutRemaining by remember(packageName) { mutableStateOf(0) }
     val engineState by app.lockEngine.state.collectAsState()
 
-    var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
-    var forcePin by remember { mutableStateOf(false) }
-    var lockoutRemaining by remember { mutableStateOf(0) }
-
-    /*
-     * SECURITY / PRIVACY:
-     *
-     * The keypad digits are randomized once for this lock-screen
-     * instance. This protects against someone learning the fixed
-     * physical positions of the digits through repeated observation.
-     *
-     * The user's actual PIN is NOT changed.
-     *
-     * The randomized mapping is intentionally remembered so normal
-     * Compose recomposition does not reshuffle the keypad while the
-     * user is entering a PIN.
-     */
     val randomizedDigits = remember(packageName) {
         secureShuffleDigits()
     }
@@ -89,35 +84,20 @@ fun LockScreen(
     val label = remember(packageName) {
         runCatching {
             context.packageManager.getApplicationLabel(
-                context.packageManager.getApplicationInfo(
-                    packageName,
-                    0
-                )
+                context.packageManager.getApplicationInfo(packageName, 0)
             ).toString()
         }.getOrDefault("Protected app")
     }
 
-    LaunchedEffect(engineState) {
+    LaunchedEffect(packageName, engineState) {
         while (app.lockEngine.isBlocked()) {
-            lockoutRemaining =
-                app.lockEngine.remainingLockoutSeconds()
-
+            lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
             delay(1_000L)
         }
-
         lockoutRemaining = 0
-
-        if (
-            engineState ==
-            LockEngine.State.TEMPORARILY_BLOCKED
-        ) {
-            error = ""
-        }
     }
 
-    fun showResult(
-        result: LockEngine.AuthenticationResult
-    ) {
+    fun showResult(result: LockEngine.AuthenticationResult) {
         when (result) {
             LockEngine.AuthenticationResult.SUCCESS -> {
                 error = ""
@@ -126,9 +106,7 @@ fun LockScreen(
             }
 
             LockEngine.AuthenticationResult.BLOCKED -> {
-                lockoutRemaining =
-                    app.lockEngine.remainingLockoutSeconds()
-
+                lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
                 error = "Too many failed attempts"
             }
 
@@ -140,78 +118,57 @@ fun LockScreen(
             LockEngine.AuthenticationResult.NOT_PROTECTED,
             LockEngine.AuthenticationResult.NOT_CONFIGURED,
             LockEngine.AuthenticationResult.LIMITED_PROTECTION -> {
-                error =
-                    "Protection is not currently available"
+                error = "Protection is not currently available"
             }
         }
     }
 
     fun authenticatePin() {
         if (app.lockEngine.isBlocked()) {
-            lockoutRemaining =
-                app.lockEngine.remainingLockoutSeconds()
-
+            lockoutRemaining = app.lockEngine.remainingLockoutSeconds()
             return
         }
-
         showResult(
-            app.lockEngine.authenticatePin(
-                packageName,
-                pin
-            )
-        )
-    }
-
-    fun authenticatePattern(value: String) {
-        if (app.lockEngine.isBlocked()) {
-            lockoutRemaining =
-                app.lockEngine.remainingLockoutSeconds()
-
-            return
-        }
-
-        showResult(
-            app.lockEngine.authenticatePattern(
-                packageName,
-                value
-            )
+            app.lockEngine.authenticatePin(packageName, pin)
         )
     }
 
     fun authenticateBiometric() {
-        val activity =
-            context as? FragmentActivity ?: run {
-                forcePin = true
-                return
-            }
-
-        val ready =
-            BiometricManager.from(context).canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK
-            ) == BiometricManager.BIOMETRIC_SUCCESS
-
-        if (!ready) {
+        val activity = context as? FragmentActivity ?: run {
             forcePin = true
+            error = "Biometric authentication is unavailable"
             return
         }
 
-        val executor =
-            ContextCompat.getMainExecutor(context)
+        if (!app.lockEngine.isAuthenticationRequestActive(packageName)) {
+            error = "This authentication request is no longer active"
+            return
+        }
 
-        val prompt = BiometricPrompt(
+        val authenticators =
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.BIOMETRIC_WEAK
+
+        if (
+            BiometricManager.from(context).canAuthenticate(authenticators) !=
+                BiometricManager.BIOMETRIC_SUCCESS
+        ) {
+            forcePin = true
+            error = "Biometric authentication is unavailable. Use PIN instead."
+            return
+        }
+
+        val executor = ContextCompat.getMainExecutor(context)
+
+        BiometricPrompt(
             activity,
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
-
                 override fun onAuthenticationSucceeded(
                     result: BiometricPrompt.AuthenticationResult
                 ) {
                     showResult(
-                        app.lockEngine
-                            .completeBiometricAuthentication(
-                                packageName
-                            )
+                        app.lockEngine.completeBiometricAuthentication(packageName)
                     )
                 }
 
@@ -220,19 +177,25 @@ fun LockScreen(
                     errString: CharSequence
                 ) {
                     if (
-                        errorCode !=
-                        BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                    ) {
+                        forcePin = true
+                        error = ""
+                    } else if (
+                        errorCode != BiometricPrompt.ERROR_USER_CANCELED
                     ) {
                         error = errString.toString()
                     }
                 }
-            }
-        )
 
-        prompt.authenticate(
+                override fun onAuthenticationFailed() {
+                    error = "Biometric not recognized. Try again or use PIN."
+                }
+            }
+        ).authenticate(
             BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Unlock protected app")
-                .setSubtitle("Use your device biometric")
+                .setSubtitle(label)
                 .setNegativeButtonText("Use PIN")
                 .setConfirmationRequired(false)
                 .build()
@@ -240,191 +203,105 @@ fun LockScreen(
     }
 
     val method = repo.getAuthMethod()
-
-    val showBiometric =
-        method == AuthMethod.BIOMETRIC && !forcePin
-
-    val showPattern =
-        method == AuthMethod.PATTERN && !forcePin
-
-    val blocked =
-        app.lockEngine.isBlocked()
+    val showBiometric = method == AuthMethod.BIOMETRIC && !forcePin
+    val showPattern = method == AuthMethod.PATTERN && !forcePin
+    val blocked = app.lockEngine.isBlocked()
 
     Surface(
-        modifier = Modifier
-            .fillMaxSize()
-            .alpha(1f),
+        modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-
-            /*
-             * SECURITY-CRITICAL AREA
-             *
-             * This area remains completely independent of:
-             * - AdMob
-             * - UMP
-             * - network
-             * - billing
-             * - sponsor content
-             */
+        Column(Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.background,
-                                MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        )
-                    )
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
             ) {
-
-                val scrollState =
-                    rememberScrollState()
-
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        .imePadding()
                         .navigationBarsPadding()
-                        .padding(
-                            horizontal = 22.dp,
-                            vertical = 24.dp
-                        ),
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally,
-                    verticalArrangement =
-                        Arrangement.Center
+                        .padding(horizontal = 22.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-
                     Box(
                         modifier = Modifier
                             .size(84.dp)
                             .background(
-                                MaterialTheme.colorScheme.primary.copy(
-                                    alpha = .13f
-                                ),
+                                MaterialTheme.colorScheme.primary.copy(alpha = .13f),
                                 CircleShape
                             ),
-                        contentAlignment =
-                            Alignment.Center
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Default.Lock,
                             contentDescription = null,
-                            tint =
-                                MaterialTheme.colorScheme.primary,
-                            modifier =
-                                Modifier.size(40.dp)
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(40.dp)
                         )
                     }
 
-                    androidx.compose.foundation.layout.Spacer(
-                        Modifier.height(16.dp)
-                    )
+                    Spacer(Modifier.height(16.dp))
 
                     Text(
                         "Protected app",
-                        style =
-                            MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
-
                     Text(
                         label,
-                        style =
-                            MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    androidx.compose.foundation.layout.Spacer(
-                        Modifier.height(6.dp)
-                    )
+                    Spacer(Modifier.height(6.dp))
 
-                    Row(
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Shield,
                             contentDescription = null,
-                            tint =
-                                MaterialTheme
-                                    .colorScheme
-                                    .primary,
-                            modifier =
-                                Modifier.size(18.dp)
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
                         )
-
-                        androidx.compose.foundation.layout.Spacer(
-                            Modifier.size(6.dp)
-                        )
-
+                        Spacer(Modifier.size(6.dp))
                         Text(
                             "AppLock security check",
-                            color =
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    androidx.compose.foundation.layout.Spacer(
-                        Modifier.height(24.dp)
-                    )
+                    Spacer(Modifier.height(24.dp))
 
                     when {
-
                         blocked -> {
                             Text(
                                 if (lockoutRemaining > 0) {
-                                    "Too many attempts. " +
-                                        "Try again in " +
-                                        "${lockoutRemaining}s."
+                                    "Too many attempts. Try again in ${lockoutRemaining}s."
                                 } else {
-                                    "Temporarily locked. " +
-                                        "Try again shortly."
+                                    "Temporarily locked. Try again shortly."
                                 },
-                                color =
-                                    MaterialTheme
-                                        .colorScheme
-                                        .error,
-                                fontWeight =
-                                    FontWeight.SemiBold
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
 
                         showBiometric -> {
-
                             Button(
-                                onClick =
-                                    ::authenticateBiometric,
+                                onClick = ::authenticateBiometric,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(56.dp),
-                                shape =
-                                    RoundedCornerShape(
-                                        theme.cornerRadius.dp
-                                    )
+                                shape = RoundedCornerShape(20.dp)
                             ) {
                                 Icon(
                                     Icons.Default.Fingerprint,
                                     contentDescription = null
                                 )
-
-                                androidx.compose.foundation.layout.Spacer(
-                                    Modifier.size(10.dp)
-                                )
-
-                                Text(
-                                    "Unlock with biometric"
-                                )
+                                Spacer(Modifier.size(10.dp))
+                                Text("Unlock with biometric")
                             }
 
                             if (repo.hasPin()) {
@@ -440,68 +317,58 @@ fun LockScreen(
                         }
 
                         showPattern -> {
-
                             Text(
-                                "Draw your pattern",
-                                color =
-                                    MaterialTheme
-                                        .colorScheme
-                                        .onSurfaceVariant
+                                if (error.isEmpty()) {
+                                    "Draw your pattern"
+                                } else {
+                                    error
+                                },
+                                color = if (error.isEmpty()) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                }
                             )
 
-                            androidx.compose.foundation.layout.Spacer(
-                                Modifier.height(14.dp)
-                            )
+                            Spacer(Modifier.height(14.dp))
 
-                            PatternGrid(
-                                onComplete =
-                                    ::authenticatePattern
+                            PatternLockInput(
+                                enabled = !blocked,
+                                onComplete = { value ->
+                                    showResult(
+                                        app.lockEngine.authenticatePattern(
+                                            packageName,
+                                            value
+                                        )
+                                    )
+                                }
                             )
                         }
 
                         else -> {
-
                             Text(
-                                if (error.isEmpty()) {
-                                    "Enter your PIN"
+                                if (error.isEmpty()) "Enter your PIN" else error,
+                                color = if (error.isEmpty()) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 } else {
-                                    error
-                                },
-                                color =
-                                    if (error.isEmpty()) {
-                                        MaterialTheme
-                                            .colorScheme
-                                            .onSurfaceVariant
-                                    } else {
-                                        MaterialTheme
-                                            .colorScheme
-                                            .error
-                                    }
+                                    MaterialTheme.colorScheme.error
+                                }
                             )
 
-                            androidx.compose.foundation.layout.Spacer(
-                                Modifier.height(12.dp)
-                            )
+                            Spacer(Modifier.height(12.dp))
 
                             Row(
-                                horizontalArrangement =
-                                    Arrangement.spacedBy(9.dp)
+                                horizontalArrangement = Arrangement.spacedBy(9.dp)
                             ) {
                                 repeat(8) { index ->
                                     Box(
                                         Modifier
                                             .size(11.dp)
                                             .background(
-                                                if (
-                                                    index < pin.length
-                                                ) {
-                                                    MaterialTheme
-                                                        .colorScheme
-                                                        .primary
+                                                if (index < pin.length) {
+                                                    MaterialTheme.colorScheme.primary
                                                 } else {
-                                                    MaterialTheme
-                                                        .colorScheme
-                                                        .surfaceVariant
+                                                    MaterialTheme.colorScheme.surfaceVariant
                                                 },
                                                 CircleShape
                                             )
@@ -509,92 +376,52 @@ fun LockScreen(
                                 }
                             }
 
-                            androidx.compose.foundation.layout.Spacer(
-                                Modifier.height(20.dp)
-                            )
+                            Spacer(Modifier.height(20.dp))
 
-                            /*
-                             * The ten numeric digits have already been
-                             * randomized for this lock-screen instance.
-                             *
-                             * Backspace and Unlock remain fixed so the
-                             * keypad stays familiar and usable.
-                             */
-                            val keys =
-                                randomizedDigits +
-                                    listOf(
-                                        "⌫",
-                                        "UNLOCK"
-                                    )
+                            val keys = randomizedDigits + listOf("⌫", "UNLOCK")
 
                             keys.chunked(3).forEach { row ->
-
                                 Row(
-                                    modifier =
-                                        Modifier.fillMaxWidth(),
-                                    horizontalArrangement =
-                                        Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-
                                     row.forEach { key ->
-
                                         when (key) {
-
                                             "⌫" -> {
                                                 Button(
                                                     onClick = {
                                                         if (pin.isNotEmpty()) {
-                                                            pin =
-                                                                pin.dropLast(1)
+                                                            pin = pin.dropLast(1)
                                                         }
-
                                                         error = ""
                                                     },
-                                                    enabled =
-                                                        !blocked,
-                                                    modifier =
-                                                        Modifier
-                                                            .weight(1f)
-                                                            .height(56.dp),
-                                                    shape =
-                                                        RoundedCornerShape(
-                                                            theme.cornerRadius.dp
-                                                        )
+                                                    enabled = !blocked,
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(56.dp),
+                                                    shape = RoundedCornerShape(18.dp)
                                                 ) {
                                                     Icon(
                                                         Icons.Default.Backspace,
-                                                        contentDescription =
-                                                            "Delete"
+                                                        contentDescription = "Delete"
                                                     )
                                                 }
                                             }
 
                                             "UNLOCK" -> {
                                                 Button(
-                                                    onClick =
-                                                        ::authenticatePin,
-                                                    enabled =
-                                                        !blocked &&
-                                                            pin.length in 4..8,
-                                                    modifier =
-                                                        Modifier
-                                                            .weight(1f)
-                                                            .height(56.dp),
-                                                    shape =
-                                                        RoundedCornerShape(
-                                                            theme.cornerRadius.dp
-                                                        )
+                                                    onClick = ::authenticatePin,
+                                                    enabled = !blocked && pin.length in 4..8,
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(56.dp),
+                                                    shape = RoundedCornerShape(18.dp)
                                                 ) {
                                                     Icon(
                                                         Icons.Default.Check,
-                                                        contentDescription =
-                                                            null
+                                                        contentDescription = null
                                                     )
-
-                                                    androidx.compose.foundation.layout.Spacer(
-                                                        Modifier.size(5.dp)
-                                                    )
-
+                                                    Spacer(Modifier.size(5.dp))
                                                     Text("Unlock")
                                                 }
                                             }
@@ -602,48 +429,30 @@ fun LockScreen(
                                             else -> {
                                                 Button(
                                                     onClick = {
-                                                        if (
-                                                            !blocked &&
-                                                            pin.length < 8
-                                                        ) {
+                                                        if (!blocked && pin.length < 8) {
                                                             pin += key
                                                             error = ""
                                                         }
                                                     },
-                                                    enabled =
-                                                        !blocked &&
-                                                            pin.length < 8,
-                                                    modifier =
-                                                        Modifier
-                                                            .weight(1f)
-                                                            .height(56.dp),
-                                                    shape =
-                                                        RoundedCornerShape(
-                                                            theme.cornerRadius.dp
-                                                        )
+                                                    enabled = !blocked && pin.length < 8,
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(56.dp),
+                                                    shape = RoundedCornerShape(18.dp)
                                                 ) {
                                                     Text(
                                                         key,
-                                                        style =
-                                                            MaterialTheme
-                                                                .typography
-                                                                .titleLarge
+                                                        style = MaterialTheme.typography.titleLarge
                                                     )
                                                 }
                                             }
                                         }
                                     }
                                 }
-
-                                androidx.compose.foundation.layout.Spacer(
-                                    Modifier.height(8.dp)
-                                )
+                                Spacer(Modifier.height(8.dp))
                             }
 
-                            if (
-                                method == AuthMethod.BIOMETRIC &&
-                                repo.hasPin()
-                            ) {
+                            if (method == AuthMethod.BIOMETRIC && repo.hasPin()) {
                                 TextButton(
                                     onClick = {
                                         forcePin = false
@@ -655,157 +464,185 @@ fun LockScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
 
-                    if (
-                        error.isNotEmpty() &&
-                        !blocked
-                    ) {
-                        androidx.compose.foundation.layout.Spacer(
-                            Modifier.height(8.dp)
-                        )
+@Composable
+private fun PatternLockInput(
+    enabled: Boolean,
+    onComplete: (String) -> Unit
+) {
+    var selected by remember { mutableStateOf(emptyList<Int>()) }
 
-                        Text(
-                            error,
-                            color =
-                                MaterialTheme
-                                    .colorScheme
-                                    .error
-                        )
+    fun addPoint(point: Int) {
+        if (selected.contains(point)) return
+
+        val next = selected.toMutableList()
+
+        if (next.isNotEmpty()) {
+            val middle = intermediatePoint(next.last(), point)
+            if (middle != null && !next.contains(middle)) {
+                next += middle
+            }
+        }
+
+        if (!next.contains(point)) {
+            next += point
+        }
+
+        selected = next
+    }
+
+    Box(
+        modifier = Modifier
+            .size(280.dp)
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+
+                detectDragGestures(
+                    onDragStart = { position ->
+                        selected = emptyList()
+                        nearestPatternPoint(
+                            position,
+                            size.width.toFloat(),
+                            size.height.toFloat()
+                        )?.let(::addPoint)
+                    },
+                    onDrag = { change, _ ->
+                        nearestPatternPoint(
+                            change.position,
+                            size.width.toFloat(),
+                            size.height.toFloat()
+                        )?.let(::addPoint)
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (selected.size >= 4) {
+                            onComplete(selected.joinToString("-"))
+                        }
+                        selected = emptyList()
+                    },
+                    onDragCancel = {
+                        selected = emptyList()
                     }
+                )
+            }
+    ) {
+        val activeColor = MaterialTheme.colorScheme.primary
+        val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .45f)
+        val backgroundColor = MaterialTheme.colorScheme.background
 
-                    androidx.compose.foundation.layout.Spacer(
-                        Modifier.height(12.dp)
+        Canvas(Modifier.fillMaxSize()) {
+            val positions = patternPositions(size.width, size.height)
+
+            if (selected.size > 1) {
+                selected.zipWithNext().forEach { (a, b) ->
+                    drawLine(
+                        color = activeColor,
+                        start = positions[a],
+                        end = positions[b],
+                        strokeWidth = 10f
                     )
                 }
             }
 
-            /*
-             * NON-BLOCKING REVENUE AREA.
-             *
-             * Authentication has already been completely
-             * separated from this area.
-             */
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-            ) {
-                BannerAd.Content(
-                    enabled =
-                        app.isAdsInitialized(),
-                    modifier =
-                        Modifier.fillMaxWidth()
+            positions.forEachIndexed { index, position ->
+                val active = selected.contains(index)
+                drawCircle(
+                    color = if (active) activeColor else inactiveColor,
+                    radius = if (active) 18f else 12f,
+                    center = position
                 )
+
+                if (active) {
+                    drawCircle(
+                        color = backgroundColor,
+                        radius = 6f,
+                        center = position
+                    )
+                }
             }
+
         }
     }
 }
 
-/**
- * Creates a secure random permutation of the ten decimal digits.
- *
- * SecureRandom is used instead of a predictable pseudo-random source.
- *
- * The resulting order is only a keypad presentation order.
- * It is never used as a credential and never persisted.
- */
-private fun secureShuffleDigits(): List<String> {
-    val digits =
-        mutableListOf(
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9"
-        )
+private fun patternPositions(width: Float, height: Float): List<Offset> {
+    val x1 = width * .2f
+    val x2 = width * .5f
+    val x3 = width * .8f
+    val y1 = height * .2f
+    val y2 = height * .5f
+    val y3 = height * .8f
 
+    return listOf(
+        Offset(x1, y1), Offset(x2, y1), Offset(x3, y1),
+        Offset(x1, y2), Offset(x2, y2), Offset(x3, y2),
+        Offset(x1, y3), Offset(x2, y3), Offset(x3, y3)
+    )
+}
+
+private fun nearestPatternPoint(
+    position: Offset,
+    width: Float,
+    height: Float
+): Int? {
+    val positions = patternPositions(width, height)
+    var bestIndex = -1
+    var bestDistance = Float.MAX_VALUE
+
+    positions.forEachIndexed { index, point ->
+        val dx = position.x - point.x
+        val dy = position.y - point.y
+        val distance = sqrt(dx * dx + dy * dy)
+        if (distance < bestDistance) {
+            bestDistance = distance
+            bestIndex = index
+        }
+    }
+
+    val threshold = minOf(width, height) * .19f
+    return bestIndex.takeIf { it >= 0 && bestDistance <= threshold }
+}
+
+private fun intermediatePoint(from: Int, to: Int): Int? {
+    val fromRow = from / 3
+    val fromCol = from % 3
+    val toRow = to / 3
+    val toCol = to % 3
+
+    val rowDiff = abs(fromRow - toRow)
+    val colDiff = abs(fromCol - toCol)
+
+    if (rowDiff == 0 && colDiff == 2) {
+        return fromRow * 3 + 1
+    }
+    if (colDiff == 0 && rowDiff == 2) {
+        return 3 + minOf(fromCol, toCol)
+    }
+    if (rowDiff == 2 && colDiff == 2) {
+        return 4
+    }
+
+    return null
+}
+
+private fun secureShuffleDigits(): List<String> {
+    val digits = mutableListOf(
+        "0", "1", "2", "3", "4",
+        "5", "6", "7", "8", "9"
+    )
     val random = SecureRandom()
 
-    /*
-     * Fisher-Yates shuffle.
-     *
-     * Every position is swapped with a randomly selected
-     * remaining position.
-     */
     for (index in digits.lastIndex downTo 1) {
-        val swapIndex =
-            random.nextInt(index + 1)
-
-        val temporary =
-            digits[index]
-
-        digits[index] =
-            digits[swapIndex]
-
-        digits[swapIndex] =
-            temporary
+        val swapIndex = random.nextInt(index + 1)
+        val temp = digits[index]
+        digits[index] = digits[swapIndex]
+        digits[swapIndex] = temp
     }
 
     return digits
-}
-
-@Composable
-private fun PatternGrid(
-    onComplete: (String) -> Unit
-) {
-    var selected by remember {
-        mutableStateOf(emptyList<Int>())
-    }
-
-    Column(
-        verticalArrangement =
-            Arrangement.spacedBy(10.dp),
-        horizontalAlignment =
-            Alignment.CenterHorizontally
-    ) {
-        repeat(3) { row ->
-            Row(
-                horizontalArrangement =
-                    Arrangement.spacedBy(10.dp)
-            ) {
-                repeat(3) { column ->
-
-                    val index =
-                        row * 3 + column
-
-                    val isSelected =
-                        selected.contains(index)
-
-                    Button(
-                        onClick = {
-                            if (!isSelected) {
-                                val next =
-                                    selected + index
-
-                                selected = next
-
-                                if (next.size >= 4) {
-                                    onComplete(
-                                        next.joinToString("-")
-                                    )
-
-                                    selected = emptyList()
-                                }
-                            }
-                        },
-                        modifier = Modifier.size(62.dp),
-                        shape = CircleShape
-                    ) {
-                        Text(
-                            if (isSelected) {
-                                "●"
-                            } else {
-                                ""
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
 }

@@ -43,14 +43,12 @@ private const val SUPPORT_EMAIL =
 
 @Composable
 fun SettingsScreen() {
-    val app =
-        LocalContext.current.applicationContext as AppLockApplication
+    val app = LocalContext.current.applicationContext as AppLockApplication
 
     if (app.repository.hasCredential()) {
         SecurityGateScreen(
             title = "AppLock settings are secured",
-            description =
-                "Authenticate before changing system-access paths or security state."
+            description = "Authenticate before changing system-access paths or security state."
         ) {
             SettingsEditor()
         }
@@ -62,8 +60,7 @@ fun SettingsScreen() {
 @Composable
 private fun SettingsEditor() {
     val context = LocalContext.current
-    val app =
-        context.applicationContext as AppLockApplication
+    val app = context.applicationContext as AppLockApplication
 
     Column(
         modifier = Modifier
@@ -71,319 +68,184 @@ private fun SettingsEditor() {
             .imePadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(
-                horizontal = 16.dp,
-                vertical = 12.dp
-            ),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        SettingsHeader()
-
-        SecurityControlsCard(
-            onAccessibilityClick = {
-                context.startActivity(
-                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                )
-            },
-            onLockAllClick = {
-                app.repository.clearAllUnlocks()
-            },
-            onAppSettingsClick = {
-                context.startActivity(
-                    Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.parse(
-                            "package:${context.packageName}"
-                        )
-                    )
-                )
-            }
-        )
-
-        PrivacySupportCard(
-            onPrivacyClick = {
-                openPrivacyPolicy(context)
-            },
-            onSupportClick = {
-                openSupportEmail(context)
-            }
-        )
-    }
-}
-
-private fun openPrivacyPolicy(
-    context: android.content.Context
-) {
-    runCatching {
-        context.startActivity(
-            Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse(PRIVACY_POLICY_URL)
-            )
-        )
-    }
-}
-
-private fun openSupportEmail(
-    context: android.content.Context
-) {
-    runCatching {
-        context.startActivity(
-            Intent(
-                Intent.ACTION_SENDTO,
-                Uri.parse("mailto:$SUPPORT_EMAIL")
-            ).apply {
-                putExtra(
-                    Intent.EXTRA_SUBJECT,
-                    "App Lock Support"
-                )
-            }
-        )
-    }
-}
-
-@Composable
-private fun SettingsHeader() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text = "Settings",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
-
         Text(
-            text =
-                "Manage AppLock's system access, protection controls, privacy information, and support.",
+            text = "Manage AppLock's system access, protection controls, privacy information, and support.",
             style = MaterialTheme.typography.bodyMedium,
-            color =
-                MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
 
-@Composable
-private fun SecurityControlsCard(
-    onAccessibilityClick: () -> Unit,
-    onLockAllClick: () -> Unit,
-    onAppSettingsClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor =
-                MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        elevation =
-            CardDefaults.cardElevation(
-                defaultElevation = 1.dp
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(12.dp)
         ) {
-            SettingsSectionTitle(
-                icon = {
-                    Icon(
-                        imageVector =
-                            Icons.Default.AdminPanelSettings,
-                        contentDescription = null
-                    )
-                },
-                title = "Security & system controls",
-                description =
-                    "These controls affect how AppLock integrates with Android."
-            )
-
-            SettingsAction(
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null
-                    )
-                },
-                title = "Accessibility access",
-                description =
-                    "Manage the Android accessibility service used for foreground-app detection.",
-                onClick = onAccessibilityClick
-            )
-
-            SettingsAction(
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null
-                    )
-                },
-                title = "Lock all protected apps now",
-                description =
-                    "Immediately clear active unlock sessions for protected apps.",
-                onClick = onLockAllClick
-            )
-
-            SettingsAction(
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.OpenInNew,
-                        contentDescription = null
-                    )
-                },
-                title = "App system settings",
-                description =
-                    "Open Android's system settings page for AppLock.",
-                onClick = onAppSettingsClick
-            )
-        }
-    }
-}
-
-@Composable
-private fun PrivacySupportCard(
-    onPrivacyClick: () -> Unit,
-    onSupportClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor =
-                MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        elevation =
-            CardDefaults.cardElevation(
-                defaultElevation = 1.dp
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(12.dp)
-        ) {
-            SettingsSectionTitle(
-                icon = {
-                    Icon(
-                        imageVector =
-                            Icons.Default.PrivacyTip,
-                        contentDescription = null
-                    )
-                },
-                title = "Privacy & support",
-                description =
-                    "Information about AppLock's privacy model and how to get help."
-            )
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement =
-                        Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "Privacy-first protection",
-                        style =
-                            MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                SectionHeader(
+                    icon = {
+                        Icon(
+                            Icons.Default.AdminPanelSettings,
+                            contentDescription = null
+                        )
+                    },
+                    title = "Security & system controls",
+                    description = "These controls affect how AppLock integrates with Android."
+                )
 
-                    Text(
-                        text =
-                            "AppLock does not intentionally transmit PINs, patterns, authentication secrets or private screen contents for the core locking function.",
-                        style =
-                            MaterialTheme.typography.bodyMedium,
-                        color =
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                ActionButton(
+                    icon = {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = null
+                        )
+                    },
+                    title = "Accessibility access",
+                    description = "Manage the Android accessibility service used for foreground-app detection."
+                ) {
+                    context.startActivity(
+                        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    )
+                }
+
+                ActionButton(
+                    icon = {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null
+                        )
+                    },
+                    title = "Lock all protected apps now",
+                    description = "Immediately clear active unlock sessions and foreground authorization."
+                ) {
+                    app.repository.clearAllUnlocks()
+                    app.lockEngine.resetTransitionState()
+                    app.repository.refreshProtectionState()
+                }
+
+                ActionButton(
+                    icon = {
+                        Icon(
+                            Icons.Default.OpenInNew,
+                            contentDescription = null
+                        )
+                    },
+                    title = "App system settings",
+                    description = "Open Android's system settings page for AppLock."
+                ) {
+                    context.startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:${context.packageName}")
+                        )
                     )
                 }
             }
+        }
 
-            OutlinedButton(
-                onClick = onPrivacyClick,
-                modifier = Modifier.fillMaxWidth()
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector =
-                        Icons.Default.PrivacyTip,
-                    contentDescription = null
+                SectionHeader(
+                    icon = {
+                        Icon(
+                            Icons.Default.PrivacyTip,
+                            contentDescription = null
+                        )
+                    },
+                    title = "Privacy & support",
+                    description = "Information about AppLock's privacy model and how to get help."
                 )
 
-                Text(
-                    text = "Privacy Policy",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(
+                            "Privacy-first protection",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "AppLock does not intentionally transmit PINs, patterns, authentication secrets or private screen contents for the core locking function.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
-            Button(
-                onClick = onSupportClick,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector =
-                        Icons.Default.SupportAgent,
-                    contentDescription = null
-                )
-
-                Text(
-                    text = "Contact Support",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-                color =
-                    MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement =
-                        Arrangement.spacedBy(12.dp),
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(PRIVACY_POLICY_URL)
+                                )
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
-                        imageVector =
-                            Icons.Default.SupportAgent,
-                        contentDescription = null,
-                        tint =
-                            MaterialTheme.colorScheme.onPrimaryContainer
+                        Icons.Default.PrivacyTip,
+                        contentDescription = null
                     )
+                    Text(
+                        "Privacy policy",
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement =
-                            Arrangement.spacedBy(2.dp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Support email",
-                            style =
-                                MaterialTheme.typography.titleSmall,
-                            fontWeight =
-                                FontWeight.SemiBold,
-                            color =
-                                MaterialTheme.colorScheme.onPrimaryContainer
+                        Icon(
+                            Icons.Default.SupportAgent,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-
-                        Text(
-                            text = SUPPORT_EMAIL,
-                            style =
-                                MaterialTheme.typography.bodyMedium,
-                            color =
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Support",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                SUPPORT_EMAIL,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                     }
                 }
             }
@@ -392,22 +254,19 @@ private fun PrivacySupportCard(
 }
 
 @Composable
-private fun SettingsSectionTitle(
+private fun SectionHeader(
     icon: @Composable () -> Unit,
     title: String,
     description: String
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement =
-            Arrangement.spacedBy(12.dp),
-        verticalAlignment =
-            Alignment.Top
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
     ) {
         Surface(
             shape = MaterialTheme.shapes.medium,
-            color =
-                MaterialTheme.colorScheme.primaryContainer
+            color = MaterialTheme.colorScheme.primaryContainer
         ) {
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier.padding(10.dp),
@@ -419,63 +278,47 @@ private fun SettingsSectionTitle(
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement =
-                Arrangement.spacedBy(3.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Text(
-                text = title,
-                style =
-                    MaterialTheme.typography.titleMedium,
+                title,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
-
             Text(
-                text = description,
-                style =
-                    MaterialTheme.typography.bodySmall,
-                color =
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
 @Composable
-private fun SettingsAction(
+private fun ActionButton(
     icon: @Composable () -> Unit,
     title: String,
     description: String,
     onClick: () -> Unit
 ) {
-    OutlinedButton(
+    Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {
         icon()
-
         Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 10.dp),
-            horizontalAlignment =
-                Alignment.Start,
-            verticalArrangement =
-                Arrangement.spacedBy(2.dp)
+            horizontalAlignment = Alignment.Start
         ) {
             Text(
-                text = title,
-                style =
-                    MaterialTheme.typography.labelLarge,
-                fontWeight =
-                    FontWeight.SemiBold
+                title,
+                fontWeight = FontWeight.SemiBold
             )
-
             Text(
-                text = description,
-                style =
-                    MaterialTheme.typography.bodySmall,
-                color =
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                description,
+                style = MaterialTheme.typography.bodySmall
             )
         }
     }

@@ -1,8 +1,19 @@
 package applock.app.domain
 
 enum class AuthMethod { PIN, PATTERN, BIOMETRIC }
+
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
-enum class SessionRule { IMMEDIATELY, AFTER_LEAVING, SCREEN_OFF, MINUTES_1, MINUTES_5, MINUTES_15, MINUTES_30 }
+
+enum class SessionRule {
+    IMMEDIATELY,
+    AFTER_LEAVING,
+    SCREEN_OFF,
+    MINUTES_1,
+    MINUTES_5,
+    MINUTES_15,
+    MINUTES_30
+}
+
 enum class HealthState { GREEN, YELLOW, RED }
 
 enum class ProtectionReason {
@@ -23,7 +34,11 @@ data class ProtectionSnapshot(
     val secureStorageHealthy: Boolean = true
 )
 
-enum class AnimationStyle { COSMIC_ORB, LIQUID_FLOW, CRYSTAL_UNLOCK }
+enum class AnimationStyle {
+    COSMIC_ORB,
+    LIQUID_FLOW,
+    CRYSTAL_UNLOCK
+}
 
 data class ThemeSettings(
     val mode: ThemeMode = ThemeMode.SYSTEM,
