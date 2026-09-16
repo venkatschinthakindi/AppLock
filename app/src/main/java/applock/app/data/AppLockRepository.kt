@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class AppLockRepository(
     private val context: Context
-) {
+) : applock.app.engine.LockPolicySource {
 
     private val prefs = context.getSharedPreferences(
         "app_lock_settings",
@@ -147,7 +147,7 @@ class AppLockRepository(
             )
             .apply()
 
-    fun getAuthMethod(): AuthMethod =
+    override fun getAuthMethod(): AuthMethod =
         runCatching {
             AuthMethod.valueOf(
                 prefs.getString(
@@ -205,11 +205,11 @@ class AppLockRepository(
         refreshProtectionState()
     }
 
-    fun verifyPin(pin: String): Boolean =
+    override fun verifyPin(pin: String): Boolean =
         pin.length in 4..8 &&
             secure.read("pin") == pin
 
-    fun hasPin(): Boolean =
+    override fun hasPin(): Boolean =
         secure.read("pin") != null
 
     fun setPattern(pattern: String) {
@@ -217,16 +217,16 @@ class AppLockRepository(
         refreshProtectionState()
     }
 
-    fun verifyPattern(pattern: String): Boolean =
+    override fun verifyPattern(pattern: String): Boolean =
         secure.read("pattern") == pattern
 
-    fun hasPattern(): Boolean =
+    override fun hasPattern(): Boolean =
         secure.read("pattern") != null
 
     fun hasCredential(): Boolean =
         authenticationConfigured()
 
-    fun authenticationConfigured(): Boolean =
+    override fun authenticationConfigured(): Boolean =
         when (getAuthMethod()) {
             AuthMethod.PIN -> hasPin()
             AuthMethod.PATTERN -> hasPattern()
@@ -268,19 +268,22 @@ class AppLockRepository(
             .apply()
 
         /*
-         * Removing protection must immediately remove any existing unlock
-         * session for that package.
+         * Any change to the protection state of a package is a security
+         * boundary: an old unlock timestamp must never survive it.
+         *
+         * Enabling protection previously kept a stale "unlock_<pkg>" value
+         * from an earlier protected period, which let the very first launch
+         * after configuration pass without a challenge under timed session
+         * rules. Both directions now clear it.
          */
-        if (!enabled) {
-            prefs.edit()
-                .remove("unlock_$packageName")
-                .apply()
-        }
+        prefs.edit()
+            .remove("unlock_$packageName")
+            .apply()
 
         refreshProtectionState()
     }
 
-    fun isProtected(packageName: String): Boolean =
+    override fun isProtected(packageName: String): Boolean =
         packageName.isNotBlank() &&
             protectedPackagesCache.contains(packageName)
 
@@ -290,7 +293,7 @@ class AppLockRepository(
      * This is intentionally the only point where an unlock timestamp is
      * written.
      */
-    fun markUnlocked(packageName: String): Boolean {
+    override fun markUnlocked(packageName: String): Boolean {
         if (
             packageName.isBlank() ||
             !isProtected(packageName)
@@ -335,6 +338,26 @@ class AppLockRepository(
         editor.apply()
     }
 
+    /**
+     * Screen off / device lock.
+     *
+     * In-memory foreground authorization is always destroyed by the engine.
+     * Persisted unlock timestamps are cleared for every rule whose semantics
+     * end at a departure; explicit timed rules keep running as configured.
+     */
+    fun clearUnlocksForScreenOff() {
+        when (getSessionRule()) {
+            SessionRule.IMMEDIATELY,
+            SessionRule.AFTER_LEAVING,
+            SessionRule.SCREEN_OFF -> clearAllUnlocks()
+
+            SessionRule.MINUTES_1,
+            SessionRule.MINUTES_5,
+            SessionRule.MINUTES_15,
+            SessionRule.MINUTES_30 -> Unit
+        }
+    }
+
     fun recentlyUnlockedAt(packageName: String): Long =
         prefs.getLong(
             "unlock_$packageName",
@@ -359,9 +382,12 @@ class AppLockRepository(
      * Timed sessions:
      *   Unlock remains valid for the selected duration.
      */
+    override fun shouldRequireAuth(packageName: String): Boolean =
+        shouldRequireAuth(packageName, System.currentTimeMillis())
+
     fun shouldRequireAuth(
         packageName: String,
-        now: Long = System.currentTimeMillis()
+        now: Long
     ): Boolean {
 
         if (!isProtected(packageName)) {

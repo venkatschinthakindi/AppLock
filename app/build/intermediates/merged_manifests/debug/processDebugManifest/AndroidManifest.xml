@@ -86,9 +86,11 @@
         -->
         <activity
             android:name="applock.app.ui.lock.LockActivity"
+            android:autoRemoveFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:launchMode="singleTask"
+            android:launchMode="singleInstance"
             android:noHistory="false"
             android:screenOrientation="portrait"
             android:showWhenLocked="true"

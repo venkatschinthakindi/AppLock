@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    canRetrieveWindowContent + flagRetrieveInteractiveWindows are required so
+    the service can read which package owns the top application window.
+
+    Only AccessibilityWindowInfo.type and the root node's package name are
+    ever read. No text, no view content, nothing is stored or transmitted.
+    This is the authoritative signal that stops challenges from being skipped
+    when the system drops or coalesces a window event.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="100"
-    android:canRetrieveWindowContent="false"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
+    android:notificationTimeout="0"
+    android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_description" />

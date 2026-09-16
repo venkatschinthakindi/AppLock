@@ -9,9 +9,9 @@ import android.os.Build
 import android.view.accessibility.AccessibilityManager
 import com.google.android.gms.ads.MobileAds
 import applock.app.data.AppLockRepository
-import applock.app.domain.SessionRule
 import applock.app.engine.LockEngine
 import applock.app.security.AntiTamperManager
+import applock.app.service.AppDetectionAccessibilityService
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -67,18 +67,26 @@ class AppLockApplication : Application() {
                 ) {
                     when (intent?.action) {
                         Intent.ACTION_SCREEN_OFF -> {
-                            if (
-                                repository.getSessionRule() ==
-                                SessionRule.SCREEN_OFF
-                            ) {
-                                repository.clearAllUnlocks()
-                                lockEngine.resetTransitionState()
-                            }
-
+                            /*
+                             * Screen off is the hardest boundary there is.
+                             *
+                             * Foreground authorization is ALWAYS destroyed,
+                             * regardless of the configured session rule.
+                             * Otherwise a protected app left in the foreground
+                             * stays authorized across a device lock and is
+                             * re-entered without any challenge.
+                             *
+                             * Persisted unlock timestamps follow the user's
+                             * configured rule.
+                             */
+                            lockEngine.onScreenOff()
+                            repository.clearUnlocksForScreenOff()
+                            AppDetectionAccessibilityService.notifyScreenOff()
                             repository.refreshProtectionState()
                         }
 
-                        Intent.ACTION_SCREEN_ON -> {
+                        Intent.ACTION_SCREEN_ON,
+                        Intent.ACTION_USER_PRESENT -> {
                             repository.refreshProtectionState()
                         }
                     }
@@ -92,6 +100,7 @@ class AppLockApplication : Application() {
             IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
             },
             if (Build.VERSION.SDK_INT >= 33) {
                 RECEIVER_NOT_EXPORTED

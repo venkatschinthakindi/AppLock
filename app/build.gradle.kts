@@ -102,4 +102,7 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("com.google.android.gms:play-services-ads:24.6.0")
     implementation("com.google.android.ump:user-messaging-platform:3.2.0")
+
+    // Security state-machine regression suite (pure JVM, no Android needed).
+    testImplementation("junit:junit:4.13.2")
 }
