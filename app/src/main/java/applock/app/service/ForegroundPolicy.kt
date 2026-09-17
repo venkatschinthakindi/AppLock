@@ -3,7 +3,6 @@ package applock.app.service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 
 /**
@@ -30,6 +29,7 @@ object ForegroundPolicy {
     }
 
     private const val SYSTEM_UI = "com.android.systemui"
+    private const val GMS_PACKAGE = "com.google.android.gms"
 
     /**
      * System components that render *over* the current app and through which
@@ -48,9 +48,22 @@ object ForegroundPolicy {
         "com.google.android.documentsui",
         "com.google.android.providers.media.module",
         "com.android.providers.media.module",
-        "com.google.android.gms",
         "com.android.credentialmanager",
         "com.google.android.as"
+    )
+
+    /**
+     * `com.google.android.gms` is deliberately NOT in [nonDeparturePackages].
+     * It hosts a wide range of surfaces beyond brief dialogs -- some GMS
+     * modules run full standalone activities that function like separate
+     * apps. Blanket-trusting the whole package would let a session survive
+     * departing into one of those. Only its known transient dialog/picker
+     * classes are trusted; anything else from GMS falls through to the
+     * default unknown-package handling (fail closed).
+     */
+    private val gmsNonDepartureClassHints = listOf(
+        "accountpicker", "consent", "credential", "authzactivity",
+        "signinactivity" // legacy account chooser / sign-in dialogs
     )
 
     /**
@@ -147,15 +160,34 @@ object ForegroundPolicy {
 
         if (nonDeparturePackages.contains(packageName)) return Surface.NON_DEPARTURE
 
+        if (packageName == GMS_PACKAGE) {
+            return if (gmsNonDepartureClassHints.any { lower.contains(it) }) {
+                Surface.NON_DEPARTURE
+            } else if (launchablePackages.contains(packageName)) {
+                Surface.APP
+            } else {
+                // An unrecognised GMS surface that isn't independently
+                // launchable. Fail closed rather than assume it's benign.
+                Surface.APP
+            }
+        }
+
         // A real, launchable application.
         if (launchablePackages.contains(packageName)) return Surface.APP
 
-        // Unknown non-launchable package. If it is a WINDOW_STATE_CHANGED it
-        // took real focus; treat it as an app (fail closed -> session ends).
-        return if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            Surface.APP
-        } else {
-            Surface.NON_DEPARTURE
-        }
+        // Unknown, non-launchable package. The doc-level rule for this whole
+        // function is "unknown -> DEPARTURE, fail closed", and this branch
+        // must actually honour it for BOTH event types, not just
+        // TYPE_WINDOW_STATE_CHANGED. Treating an unknown TYPE_WINDOWS_CHANGED
+        // sender as NON_DEPARTURE would let a session survive an unrecognised
+        // window taking the foreground and was found to be a real
+        // inconsistency between this comment and the implementation.
+        //
+        // Route it through the engine as Surface.APP rather than the coarser
+        // DEPARTURE path: since the package is not on the protected list,
+        // evaluateLocked() ends the session exactly as DEPARTURE would, but
+        // does it through the same package-aware evaluation as any other app
+        // instead of the blunter "user left" handling.
+        return Surface.APP
     }
 }

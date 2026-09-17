@@ -1,20 +1,22 @@
 package applock.app.data
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.content.pm.PackageInfo
+import android.content.pm.ResolveInfo
 import applock.app.domain.ProtectedApp
 
 /**
  * User-facing installed application catalog used by the Protected Apps UI.
  *
- * Unlike LauncherApps, this does not require an application to expose a
- * launcher icon/activity.
- *
- * Unlike getInstalledApplications() alone, packages that have no activities
- * are excluded because they are normally service/provider/library/framework
- * packages rather than user-facing applications.
+ * Strategy: instead of asking "does this package declare an Activity?"
+ * (true for tons of system/service/webview packages that are NOT apps a
+ * user would ever open), we ask the same question the home screen /
+ * launcher asks: "does this package expose an activity that responds to
+ * ACTION_MAIN + CATEGORY_LAUNCHER?" That is the actual definition of
+ * "has an icon a user can tap," and it's what excludes things like
+ * Android System WebView, telephony/permission services, providers, etc.
  */
 object LaunchableAppCatalog {
 
@@ -26,25 +28,47 @@ object LaunchableAppCatalog {
         val packageManager: PackageManager = context.packageManager
         val ownPackage: String = context.packageName
 
-        val applications: List<ApplicationInfo> = runCatching {
+        val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+
+        // This is the same query the launcher/home-screen uses to decide
+        // what gets an icon. It naturally excludes services, providers,
+        // libraries, and internal-only activities (WebView, SystemUI
+        // internals, permission controller trampolines, etc.).
+        val resolvedActivities: List<ResolveInfo> = runCatching {
             @Suppress("DEPRECATION")
-            packageManager.getInstalledApplications(
-                PackageManager.GET_META_DATA
+            packageManager.queryIntentActivities(
+                launcherIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
             )
         }.getOrElse {
-            emptyList<ApplicationInfo>()
+            emptyList()
         }
+
+        // A package can expose more than one launcher activity (rare, but
+        // happens with multi-entry apps). Dedup by package name.
+        val launchablePackageNames: Set<String> = resolvedActivities
+            .mapNotNull { resolveInfo: ResolveInfo ->
+                resolveInfo.activityInfo?.packageName
+            }
+            .toSet()
 
         val result = mutableListOf<ProtectedApp>()
 
-        for (applicationInfo: ApplicationInfo in applications) {
-
-            val packageName: String = applicationInfo.packageName
+        for (packageName: String in launchablePackageNames) {
 
             // Never show AppLock itself.
             if (packageName == ownPackage) {
                 continue
             }
+
+            val applicationInfo: ApplicationInfo = runCatching {
+                packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.GET_META_DATA
+                )
+            }.getOrNull() ?: continue
 
             // Ignore disabled/uninstalled application entries.
             if (!applicationInfo.enabled) {
@@ -52,18 +76,6 @@ object LaunchableAppCatalog {
             }
 
             if ((applicationInfo.flags and ApplicationInfo.FLAG_INSTALLED) == 0) {
-                continue
-            }
-
-            /*
-             * A package without activities is normally a library, provider,
-             * service, framework component, or other non-user-facing package.
-             *
-             * We deliberately do NOT require a launcher activity here,
-             * because some legitimate apps are user-facing without exposing
-             * themselves through the launcher.
-             */
-            if (!hasActivity(packageManager, packageName)) {
                 continue
             }
 
@@ -107,26 +119,5 @@ object LaunchableAppCatalog {
                     }
                 }
             )
-    }
-
-    /**
-     * Returns true when the package declares at least one Activity.
-     *
-     * This is intentionally broader than checking for a launcher activity.
-     */
-    private fun hasActivity(
-        packageManager: PackageManager,
-        packageName: String
-    ): Boolean {
-
-        val packageInfo: PackageInfo = runCatching {
-            @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(
-                packageName,
-                PackageManager.GET_ACTIVITIES
-            )
-        }.getOrNull() ?: return false
-
-        return !packageInfo.activities.isNullOrEmpty()
     }
 }

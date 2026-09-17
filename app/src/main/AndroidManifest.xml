@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!--
+        Special permission: not requestable via a runtime dialog. The user
+        grants it at Settings > Apps > Special access > Usage access. It backs
+        UsageStatsForegroundSource, a foreground-app signal independent of the
+        accessibility window API, and is optional its absence only means
+        that corroborating signal has no opinion; core enforcement still runs
+        on the accessibility service without it.
+    -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:name=".AppLockApplication"

@@ -157,6 +157,15 @@ class LockActivity : FragmentActivity() {
         if (authenticationCompleted) return
         val app = application as AppLockApplication
 
+        // Belt-and-suspenders check: the PIN/pattern/biometric callback runs
+        // synchronously on the main thread right after the engine call
+        // succeeds, so there is no real gap for this activity to have been
+        // torn down in between -- but if it ever were (a biometric prompt
+        // completing after the system already stopped/finished this
+        // activity for some other reason), never commit a launch from a
+        // dead activity instance.
+        if (isFinishing || isDestroyed) return
+
         if (!isValidTarget(app, targetPackage) ||
             !app.lockEngine.isAuthorizedForLaunch(targetPackage)
         ) {

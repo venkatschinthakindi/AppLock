@@ -25,15 +25,29 @@ import applock.app.ui.lock.SecurityGateActivity
 /**
  * Foreground protected-app enforcement.
  *
- * Two independent sources of truth are used, because relying on accessibility
- * events alone is what allowed challenges to be skipped:
+ * Detection combines two sources that are now actually independent of each
+ * other, not just described as such:
  *
- *  1. Accessibility window events (fast path).
- *  2. A periodic foreground watchdog that reads the actual top application
- *     window (authoritative path). It runs whenever a challenge is pending or
- *     a session is live, so a dropped, coalesced or OEM-suppressed event can
- *     never leave a protected app exposed, and a lock screen that loses focus
- *     is immediately re-asserted.
+ *  1. Accessibility window events + a windows-based watchdog (fast path).
+ *  2. UsageStatsManager (`UsageStatsForegroundSource`), a different OS
+ *     subsystem backed by ActivityManager itself. It keeps reporting the
+ *     real foreground app even when an OEM throttles what a background
+ *     accessibility service can see -- the failure mode that let a dropped
+ *     event AND a same-API watchdog go blind together. It requires the user
+ *     to grant "Usage access"; absence of that grant narrows nothing, it
+ *     just means this signal has no opinion and detection falls back to (1).
+ *
+ * Both signals feed a set of "currently visible" packages. The engine's
+ * session model is single-foreground by design (matching Android's own
+ * single-focus-window model) and is not restructured here to track more than
+ * one authorized package at once. What this DOES do for split-screen /
+ * multi-window: if a protected, unauthorized package is visible anywhere
+ * other than the primary window, the opaque cover goes up defensively (never
+ * incorrectly clearing the primary pane's session to do it) until the user
+ * actually focuses that pane, at which point it becomes primary and is
+ * challenged through the normal, tested single-foreground path. True
+ * simultaneous independent challenges for two visible protected panes is not
+ * implemented; see VERIFICATION.md.
  */
 class AppDetectionAccessibilityService : AccessibilityService() {
 
@@ -244,14 +258,16 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         override fun run() {
             if (!watchdogArmed) return
             runCatching { watchdogTick() }
-            mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+            val interval = if (pending != null) PENDING_WATCHDOG_INTERVAL_MS else WATCHDOG_INTERVAL_MS
+            mainHandler.postDelayed(this, interval)
         }
     }
 
     private fun armWatchdog() {
+        val interval = if (pending != null) PENDING_WATCHDOG_INTERVAL_MS else WATCHDOG_INTERVAL_MS
         if (watchdogArmed) return
         watchdogArmed = true
-        mainHandler.postDelayed(watchdogRunnable, WATCHDOG_INTERVAL_MS)
+        mainHandler.postDelayed(watchdogRunnable, interval)
     }
 
     private fun disarmWatchdogIfIdle() {
@@ -262,51 +278,141 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     }
 
     private fun watchdogTick() {
-        val top = resolveTopApplicationPackage()
+        val visible = resolveVisiblePackages()
         val p = pending
 
-        if (top != null && top != packageName) {
-            // Ground truth disagreed with (or never arrived as) an event.
-            if (top != lastForegroundPackage || (p != null && top == p.packageName)) {
-                handleForeground(top, null, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        // Prefer usage stats' notion of "the" foreground package when it has
+        // an opinion -- it survives OEM accessibility throttling that the
+        // windows-based signal does not. Fall back to whichever windows-based
+        // candidate looked most authoritative.
+        val primary = visible.usageStatsPrimary ?: visible.windowsPrimary
+
+        if (primary != null && primary != packageName) {
+            if (primary != lastForegroundPackage || (p != null && primary == p.packageName)) {
+                handleForeground(primary, null, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
             }
         }
 
-        val current = pending ?: run { disarmWatchdogIfIdle(); return }
+        // Split-screen / multi-window defense.
+        //
+        // The engine's session model is deliberately single-foreground (one
+        // authorized package at a time) -- that is what its 13-case
+        // regression suite validates, and it is correct for how Android
+        // itself hands out input focus: only one window is ever truly
+        // interactive at once. Calling the normal foreground path
+        // (`handleForeground` / `engine.onForegroundApp`) for a SECOND
+        // visible package in the same tick was tried and reverted: it mutated
+        // the engine's single `foregroundPackage` slot and could tear down a
+        // different, legitimately authorized app's session just because a
+        // second window (a real split-screen pane, or even a transient extra
+        // window during a normal transition) happened to be visible
+        // alongside it.
+        //
+        // So this check is deliberately read-only with respect to every
+        // other package's session state. It never creates a request for the
+        // secondary package and never touches authorizedPackage/
+        // foregroundPackage. If it finds a protected, unauthorized package
+        // visible anywhere other than the primary window, it blunts the
+        // exposure the only way that is safe without a larger, map-based
+        // per-package engine model: the full-screen opaque cover goes up
+        // (safe -- it never lets content through, it just also temporarily
+        // covers the authorized pane too) until the user brings that pane
+        // into focus, at which point it naturally becomes `primary` on the
+        // next tick and is challenged through the normal, tested path.
+        //
+        // This is an honest partial mitigation, not full simultaneous
+        // dual-pane challenging -- see VERIFICATION.md.
+        val secondaryExposure = visible.all.any { pkg ->
+            pkg.isNotBlank() &&
+                pkg != packageName &&
+                pkg != primary &&
+                app.repository.isProtected(pkg) &&
+                !app.lockEngine.isAuthorizedForLaunch(pkg)
+        }
 
-        val topIsOurs = top == null || top == packageName
-        if (!topIsOurs && top == current.packageName) {
-            // The protected app is on screen and our lock UI is not. Re-assert
-            // the barrier immediately and retry the lock screen.
-            current.lockUiVisible = false
-            showProtectionOverlay()
-            maybeRelaunchLockUi(current)
-        } else if (!current.lockUiVisible) {
-            showProtectionOverlay()
-            maybeRelaunchLockUi(current)
+        val current = pending
+        when {
+            current != null -> {
+                val primaryIsOurs = primary == null || primary == packageName
+                val challengeTargetVisible = current.packageName in visible.all ||
+                    (!primaryIsOurs && primary == current.packageName)
+                if (challengeTargetVisible) {
+                    // The protected app is on screen and our lock UI may not
+                    // be. Re-assert the barrier immediately and retry.
+                    current.lockUiVisible = false
+                    showProtectionOverlay()
+                    maybeRelaunchLockUi(current)
+                } else if (secondaryExposure || !current.lockUiVisible) {
+                    showProtectionOverlay()
+                    maybeRelaunchLockUi(current)
+                }
+            }
+
+            secondaryExposure -> {
+                // No primary challenge outstanding, but a protected,
+                // unauthorized package is visible in a secondary pane. Keep
+                // the cover up and keep polling (do NOT disarm) so it comes
+                // down the instant this clears rather than staying stuck.
+                showProtectionOverlay()
+            }
+
+            else -> {
+                removeProtectionOverlay()
+                disarmWatchdogIfIdle()
+            }
         }
     }
 
+    private data class VisiblePackages(
+        val all: Set<String>,
+        val windowsPrimary: String?,
+        val usageStatsPrimary: String?
+    )
+
     /**
-     * Reads the package that actually owns the focused application window.
-     * Returns null when it cannot be determined; callers must then fall back
-     * to event state rather than assuming anything.
+     * Combines two independent signals of what is currently visible/foreground:
+     *
+     *  1. Accessibility window info (`getWindows()`), scanning ALL active or
+     *     focused TYPE_APPLICATION windows, not just the first match, so a
+     *     split-screen or freeform pane is never invisible to this check.
+     *  2. UsageStatsManager, a wholly different OS subsystem that keeps
+     *     working even when an OEM throttles what a background accessibility
+     *     service can see. Empty when the user hasn't granted Usage access;
+     *     that is treated as "no opinion", never as "nothing is foregrounded".
+     *
+     * Neither signal being available narrows what gets challenged; only
+     * clears removed a package from consideration, never a failure to resolve.
      */
-    private fun resolveTopApplicationPackage(): String? = runCatching {
-        val list: List<AccessibilityWindowInfo> = windows ?: emptyList()
-        var candidate: String? = null
-        for (w in list) {
-            if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
-            if (!w.isActive && !w.isFocused) continue
-            val root = w.root ?: continue
-            val name = root.packageName?.toString()
-            if (!name.isNullOrBlank()) {
-                candidate = name
-                break
+    private fun resolveVisiblePackages(): VisiblePackages {
+        val windowPackages = linkedSetOf<String>()
+        var windowsPrimary: String? = null
+        runCatching {
+            val list: List<AccessibilityWindowInfo> = windows ?: emptyList()
+            for (w in list) {
+                if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                val root = w.root ?: continue
+                val name = root.packageName?.toString()
+                if (name.isNullOrBlank()) continue
+                windowPackages.add(name)
+                if (windowsPrimary == null && (w.isActive || w.isFocused)) {
+                    windowsPrimary = name
+                }
             }
         }
-        candidate
-    }.getOrNull()
+
+        val usageStatsPackages = runCatching {
+            UsageStatsForegroundSource.currentForegroundPackages(this)
+        }.getOrDefault(emptySet())
+
+        val usageStatsPrimary = usageStatsPackages
+            .firstOrNull { it != packageName }
+
+        return VisiblePackages(
+            all = windowPackages + usageStatsPackages,
+            windowsPrimary = windowsPrimary,
+            usageStatsPrimary = usageStatsPrimary
+        )
+    }
 
     // ------------------------------------------------------------ lock UI ops
 
@@ -409,11 +515,25 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
     // ------------------------------------------------------------- overlay ops
 
+    /**
+     * The protection overlay must hide the protected app's CONTENT the
+     * instant a challenge is decided, not just its touch input.
+     *
+     * Detection can never have zero latency -- the accessibility event
+     * pipeline itself has some delivery delay, that is a platform constraint,
+     * not a bug -- so there is always a brief window between "we decided this
+     * needs a challenge" and "LockActivity is actually drawn on top". A
+     * touch-blocking-but-transparent overlay leaves the protected app's
+     * screen fully visible (just not interactive) during that window, which
+     * for a screen a bystander could glance at is its own exposure. The
+     * overlay is opaque so the screen goes dark immediately and is replaced
+     * by LockActivity's real UI a moment later, never the other way round.
+     */
     private fun showProtectionOverlay() {
         if (protectionOverlay != null) return
         val wm = windowManager ?: return
         val overlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.BLACK)
             isClickable = true
             isFocusable = false
             setOnTouchListener { _: View, _: MotionEvent -> true }
@@ -425,8 +545,9 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_SECURE or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
+            PixelFormat.OPAQUE
         ).apply { gravity = Gravity.TOP or Gravity.START }
         runCatching {
             wm.addView(overlay, params)
@@ -499,6 +620,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         const val MANAGEMENT_SESSION_TTL_MS = 30_000L
         const val ACTIVITY_START_WATCHDOG_MS = 600L
         const val WATCHDOG_INTERVAL_MS = 250L
+        const val PENDING_WATCHDOG_INTERVAL_MS = 80L
         const val PROTECTION_REFRESH_INTERVAL_MS = 1_000L
         const val GATE_RELAUNCH_INTERVAL_MS = 1_500L
 
