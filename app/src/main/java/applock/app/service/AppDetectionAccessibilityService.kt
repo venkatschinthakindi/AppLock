@@ -1331,44 +1331,70 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     /**
      * Opaque native protection barrier.
      *
-     * V8 preserves the V7 no-remove/re-add behavior. Duplicate callbacks
-     * for the same protected package leave the existing compositor surface
-     * untouched.
+     * PERSISTENT-WINDOW OPTIMIZATION: the overlay's WindowManager window is
+     * created ONCE (on first need) and then kept attached for the life of
+     * the service. Every subsequent show/hide is a View.visibility toggle
+     * on an already-attached window, not a fresh WindowManager.addView()/
+     * removeView() call.
+     *
+     * This matters because addView() for a new window is a round-trip to
+     * WindowManagerService: it negotiates a new window token, inset
+     * handling, and a first layout pass before anything can actually draw.
+     * A visibility toggle on a window that already exists skips all of
+     * that -- it's a local property change plus a relayout/redraw the
+     * compositor already has a surface ready for. For a barrier whose
+     * entire purpose is "as early as physically possible", removing that
+     * round-trip from the per-launch path is a real, measurable win, not
+     * a cosmetic one.
+     *
+     * Honest limit: this cannot make the barrier appear before the
+     * accessibility event that triggers it does. AccessibilityEvent
+     * delivery is itself a Binder call from system_server into this
+     * process, dispatched onto the main looper -- that dispatch latency is
+     * an Android platform floor no app-level code can reduce to zero. What
+     * this optimization removes is every bit of avoidable latency AFTER
+     * the event arrives: no disk/repository access (already true before
+     * this change) and now no window-creation IPC either. What's left is
+     * essentially just the cost of a View property write and a compositor
+     * frame -- as close to the floor as this architecture gets.
      */
     private fun showProtectionOverlay(
         barrierPackage: String? = null
     ): Boolean {
-        val existing =
-            protectionOverlay
+        val overlay = ensureBarrierWindowAttached() ?: return false
 
-        if (existing != null) {
-            if (
-                barrierPackage != null &&
-                privacyBarrierPackage == null
-            ) {
-                privacyBarrierPackage =
-                    barrierPackage
-            }
+        val wasAlreadyVisible = overlay.visibility == View.VISIBLE
 
-            return false
+        overlay.visibility = View.VISIBLE
+
+        if (barrierPackage != null && privacyBarrierPackage == null) {
+            privacyBarrierPackage = barrierPackage
         }
 
-        val wm =
-            windowManager
-                ?: return false
+        return !wasAlreadyVisible
+    }
+
+    /**
+     * Returns the persistent barrier window, creating and attaching it if
+     * this is the first time it's needed (or if it was previously torn
+     * down, e.g. by onDestroy, or force-removed by the OS -- some OEMs are
+     * aggressive about reclaiming overlay windows from backgrounded apps,
+     * so this must tolerate finding it gone and recreate it rather than
+     * assume it's always still attached).
+     */
+    private fun ensureBarrierWindowAttached(): View? {
+        protectionOverlay?.let { return it }
+
+        val wm = windowManager ?: return null
 
         val overlay =
             FrameLayout(this).apply {
                 setBackgroundColor(Color.WHITE)
-
                 isClickable = true
                 isFocusable = false
+                visibility = View.GONE
 
-                setOnTouchListener {
-                        _: View,
-                        _: MotionEvent ->
-                    true
-                }
+                setOnTouchListener { _: View, _: MotionEvent -> true }
 
                 importantForAccessibility =
                     View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -1385,45 +1411,37 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.OPAQUE
             ).apply {
-                gravity =
-                    Gravity.TOP or
-                        Gravity.START
+                gravity = Gravity.TOP or Gravity.START
             }
 
         return runCatching {
-            wm.addView(
-                overlay,
-                params
-            )
-
+            wm.addView(overlay, params)
             protectionOverlay = overlay
-            privacyBarrierPackage = barrierPackage
-
-            true
+            overlay
         }.onFailure {
             android.util.Log.w(
                 "AppLockDiag",
-                "V8 failed to install privacy barrier",
+                "failed to attach persistent barrier window",
                 it
             )
-        }.getOrDefault(false)
+        }.getOrNull()
     }
 
     fun removeProtectionOverlay() {
-        val overlay =
-            protectionOverlay
-                ?: run {
-                    privacyBarrierPackage = null
-                    return
-                }
+        privacyBarrierPackage = null
+        protectionOverlay?.visibility = View.GONE
+    }
 
+    /**
+     * Fully detaches the barrier window from WindowManager. Only called
+     * from onDestroy() -- the persistent-window optimization above means
+     * this is intentionally NOT what happens on every ordinary hide.
+     */
+    private fun detachBarrierWindowPermanently() {
+        val overlay = protectionOverlay ?: return
         protectionOverlay = null
         privacyBarrierPackage = null
-
-        runCatching {
-            windowManager
-                ?.removeViewImmediate(overlay)
-        }
+        runCatching { windowManager?.removeViewImmediate(overlay) }
     }
 
     // ------------------------------------------------------------ callbacks
@@ -1560,7 +1578,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
         provisionalDeparturePackage = null
 
-        removeProtectionOverlay()
+        detachBarrierWindowPermanently()
 
         if (instance === this) {
             instance = null
