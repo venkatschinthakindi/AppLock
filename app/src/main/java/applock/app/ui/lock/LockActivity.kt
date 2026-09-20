@@ -1,7 +1,10 @@
 package applock.app.ui.lock
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -37,7 +40,19 @@ class LockActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        /*
+        * V4:
+        * Make the security Activity opaque from its first window frame.
+        *
+        * The service-side native accessibility barrier covers the interval
+        * before this window is ready. This opaque background covers the
+        * Activity's own startup/rendering interval.
+        */
         overridePendingTransition(0, 0)
+        window.setWindowAnimations(0)
+        window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
         window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
@@ -62,13 +77,61 @@ class LockActivity : FragmentActivity() {
                 onSuccess = { completeAuthentication(packageNameTarget) }
             )
         }
+
+        /*
+        * V4 privacy hand-off:
+        *
+        * onLockActivityShown() means the Activity exists.
+        * It does NOT mean the Activity has been drawn.
+        *
+        * Wait for the first pre-draw, then tell the accessibility service that
+        * it is safe to remove the native protection barrier.
+        */
+        val decor = window.decorView
+        val observer = decor.viewTreeObserver
+
+        observer.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+
+                private var sent = false
+
+                override fun onPreDraw(): Boolean {
+
+                    if (!sent) {
+                        sent = true
+
+                        if (
+                            packageNameTarget.isNotBlank() &&
+                            requestId != 0L &&
+                            !isFinishing &&
+                            !isDestroyed
+                        ) {
+                            AppDetectionAccessibilityService.notifyLockActivityReady(
+                                packageNameTarget,
+                                requestId
+                            )
+                        }
+
+                        if (observer.isAlive) {
+                            observer.removeOnPreDrawListener(this)
+                        }
+                    }
+
+                    return true
+                }
+            }
+        )
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+
         if (authenticationCompleted) return
-        bindRequest(intent)
+
+        if (bindRequest(intent)) {
+            installLockUiReadyHandshake()
+        }
     }
 
     /**
@@ -80,8 +143,10 @@ class LockActivity : FragmentActivity() {
         val target = source?.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
         val id = source?.getLongExtra(EXTRA_REQUEST_ID, 0L) ?: 0L
 
-        if (!isValidTarget(app, target) || !app.lockEngine.isRequestActive(target, id)) {
-            AppDetectionAccessibilityService.releaseForegroundBarrier()
+        if (
+            !isValidTarget(app, target) ||
+            !app.lockEngine.isRequestActive(target, id)
+        ) {
             finishAndRemoveTask()
             return false
         }
@@ -91,6 +156,42 @@ class LockActivity : FragmentActivity() {
         app.lockEngine.markAuthUiShown()
         AppDetectionAccessibilityService.notifyLockActivityShown(target, id)
         return true
+    }
+
+    private fun installLockUiReadyHandshake() {
+        val decor = window.decorView
+        val observer = decor.viewTreeObserver
+
+        observer.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+
+                private var sent = false
+
+                override fun onPreDraw(): Boolean {
+                    if (!sent) {
+                        sent = true
+
+                        if (
+                            packageNameTarget.isNotBlank() &&
+                            requestId != 0L &&
+                            !isFinishing &&
+                            !isDestroyed
+                        ) {
+                            AppDetectionAccessibilityService.notifyLockActivityReady(
+                                packageNameTarget,
+                                requestId
+                            )
+                        }
+
+                        if (observer.isAlive) {
+                            observer.removeOnPreDrawListener(this)
+                        }
+                    }
+
+                    return true
+                }
+            }
+        )
     }
 
     override fun onResume() {
@@ -135,14 +236,15 @@ class LockActivity : FragmentActivity() {
     override fun onDestroy() {
         if (!authenticationCompleted) {
             val app = application as AppLockApplication
+
             if (packageNameTarget.isNotBlank() && requestId != 0L) {
                 app.lockEngine.cancelRequest(packageNameTarget, requestId)
+
                 AppDetectionAccessibilityService.notifyLockActivityDismissed(
                     packageNameTarget,
                     requestId
                 )
             }
-            AppDetectionAccessibilityService.releaseForegroundBarrier()
         }
         super.onDestroy()
     }
@@ -183,15 +285,15 @@ class LockActivity : FragmentActivity() {
             !app.lockEngine.isAuthorizedForLaunch(targetPackage)
         ) {
             app.lockEngine.cancelRequest(targetPackage, requestId)
-            AppDetectionAccessibilityService.releaseForegroundBarrier()
             finishAndRemoveTask()
             return
         }
 
-        val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
+        val launchIntent =
+            packageManager.getLaunchIntentForPackage(targetPackage)
+
         if (launchIntent == null) {
             app.lockEngine.cancelRequest(targetPackage, requestId)
-            AppDetectionAccessibilityService.releaseForegroundBarrier()
             finishAndRemoveTask()
             return
         }

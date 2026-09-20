@@ -38,6 +38,17 @@ import applock.app.ui.lock.SecurityGateActivity
  * DEPARTURE/NON_DEPARTURE/APP classification used for ordinary protected-app
  * detection, so no future addition to that classification can accidentally
  * short-circuit it again.
+ *
+ * V5 PRIVACY BARRIER:
+ *
+ * The native protection barrier is installed as early as the accessibility
+ * event path permits. A protected application's first foreign-package event
+ * is covered before the more expensive/complex foreground classification,
+ * management inspection, protection refresh, LockEngine processing, or
+ * Activity launch occurs.
+ *
+ * The barrier remains in place until LockActivity reports its first pre-draw
+ * frame through notifyLockActivityReady().
  */
 class AppDetectionAccessibilityService : AccessibilityService() {
 
@@ -51,6 +62,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         val packageName: String,
         val requestId: Long,
         var lockUiVisible: Boolean = false,
+        var lockUiReady: Boolean = false,
         var lastLaunchElapsed: Long = 0L
     )
 
@@ -167,10 +179,97 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                     return
                 }
 
+        /*
+         * V5 EARLY PRIVACY BARRIER
+         *
+         * This is intentionally BEFORE handleForeground().
+         *
+         * The previous V4 implementation created the barrier only after:
+         *
+         *   management inspection
+         *   provisional-departure processing
+         *   protection refresh
+         *   ForegroundPolicy.classify()
+         *   LockEngine.onForegroundApp()
+         *   applyDecision()
+         *
+         * That processing window was large enough for an OEM window
+         * transition to expose the protected application's first frame.
+         *
+         * V5 covers a confirmed protected package immediately when its
+         * accessibility window event reaches the service.
+         *
+         * We do NOT cover:
+         *
+         *   - AppLock itself
+         *   - packages that are not protected
+         *   - a package for which an authorized session already exists
+         *
+         * showProtectionOverlay() is idempotent, so an already-installed
+         * barrier is left untouched.
+         */
+        installEarlyPrivacyBarrierIfRequired(pkg)
+
         handleForeground(
             pkg = pkg,
             className = e.className,
             eventType = e.eventType
+        )
+    }
+
+    /**
+     * Installs the native privacy barrier at the earliest practical point
+     * in the accessibility event path.
+     *
+     * This method deliberately performs only the minimum state checks needed
+     * to decide whether the incoming package must be covered.
+     *
+     * It does NOT create or modify an authentication request.
+     * Request creation remains exclusively owned by LockEngine/applyDecision().
+     *
+     * That separation is important: V5 moves only the visual privacy barrier
+     * earlier without changing the V3/V4 transactional authentication model.
+     */
+    private fun installEarlyPrivacyBarrierIfRequired(
+        pkg: String
+    ) {
+        if (pkg == packageName) {
+            return
+        }
+
+        /*
+         * A package that is not protected does not need the privacy barrier.
+         *
+         * This also prevents ordinary Settings, Launcher, SystemUI and other
+         * unrelated applications from producing a white flash.
+         */
+        if (!app.repository.isProtected(pkg)) {
+            return
+        }
+
+        /*
+         * If the package is already authorized, it is intentionally allowed
+         * to remain visible. The existing session rules and LockEngine own
+         * that authorization decision.
+         */
+        if (app.lockEngine.isAuthorizedForLaunch(pkg)) {
+            return
+        }
+
+        /*
+         * At this point the incoming package is:
+         *
+         *   - foreign to AppLock
+         *   - protected
+         *   - not currently authorized
+         *
+         * Therefore its content must be covered immediately.
+         */
+        showProtectionOverlay()
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "V5 early privacy barrier installed for protected pkg=$pkg"
         )
     }
 
@@ -344,10 +443,20 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 /*
                  * Our own authentication/security UI must never be treated
                  * as leaving the protected app.
+                 *
+                 * V4/V5 privacy barrier:
+                 *
+                 * Seeing LockActivity through Accessibility does NOT mean that
+                 * LockActivity has actually rendered its first frame yet.
+                 *
+                 * Therefore the native protection barrier stays in place until
+                 * LockActivity explicitly reports first-frame readiness.
                  */
                 app.lockEngine.onSecurityUiVisible()
 
-                removeProtectionOverlay()
+                if (pending == null || pending?.lockUiReady == true) {
+                    removeProtectionOverlay()
+                }
 
                 armWatchdog()
 
@@ -654,6 +763,12 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 clearPending()
             }
 
+            /*
+             * V5:
+             *
+             * If no authentication is required, there must not be a stale
+             * privacy barrier left over from an earlier protected transition.
+             */
             removeProtectionOverlay()
 
             if (app.lockEngine.hasActiveSession()) {
@@ -685,6 +800,10 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 decision.requestId
         ) {
 
+            /*
+             * The V5 early barrier may already be installed. Calling the
+             * method again is harmless because it is idempotent.
+             */
             if (!current.lockUiVisible) {
                 showProtectionOverlay()
                 maybeRelaunchLockUi(current)
@@ -704,6 +823,11 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 requestId = decision.requestId
             )
 
+        /*
+         * Keep the barrier in place. It may have already been installed by
+         * installEarlyPrivacyBarrierIfRequired(), but showProtectionOverlay()
+         * is intentionally idempotent.
+         */
         showProtectionOverlay()
 
         app.lockEngine.markAuthUiShown()
@@ -839,6 +963,12 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             if (!current.lockUiVisible) {
                 showProtectionOverlay()
                 maybeRelaunchLockUi(current)
+            } else if (!current.lockUiReady) {
+                /*
+                 * LockActivity exists, but its first frame has not been
+                 * reported yet. Keep the native privacy barrier in place.
+                 */
+                showProtectionOverlay()
             } else {
                 removeProtectionOverlay()
             }
@@ -1087,11 +1217,15 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         pkg: String,
         className: CharSequence?
     ): Boolean {
-        val cls = className?.toString()?.lowercase().orEmpty()
+        val cls =
+            className
+                ?.toString()
+                ?.lowercase()
+                .orEmpty()
 
         /*
-         * Do not gate a generic Settings home/list screen simply because the
-         * package is com.android.settings. The target must be an actual
+         * Do not gate a generic Settings home/list screen simply because
+         * the package is com.android.settings. The target must be an actual
          * application-management surface.
          */
         val managementClass =
@@ -1111,8 +1245,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
         /*
          * Launcher-side long-press menus can have generic class names, so
-         * allow them when the accessibility hierarchy itself contains the
-         * AppLock label plus a management action.
+         * allow them when the accessibility hierarchy itself contains
+         * the AppLock label plus a management action.
          */
         val root =
             rootInActiveWindow
@@ -1317,7 +1451,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
                 /*
                  * If Android rejects the Activity launch, do not leave a
-                 * permanent black barrier over the management screen.
+                 * permanent black/white barrier over the management screen.
                  */
                 removeProtectionOverlay()
             }
@@ -1376,8 +1510,15 @@ class AppDetectionAccessibilityService : AccessibilityService() {
      * The opaque barrier protects the underlying protected application while
      * the authentication Activity is being launched.
      *
-     * It is deliberately opaque and FLAG_SECURE so protected content is not
-     * left visible during the Activity-launch latency window.
+     * V5:
+     *
+     * The barrier is intentionally WHITE and fully OPAQUE.
+     *
+     * It is deliberately NOT translucent because a translucent white layer
+     * could still reveal enough of a private conversation/list underneath it.
+     *
+     * FLAG_SECURE prevents the protected content from being exposed through
+     * screenshots/screen capture while the barrier is active.
      */
     private fun showProtectionOverlay() {
 
@@ -1392,7 +1533,12 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         val overlay =
             FrameLayout(this).apply {
 
-                setBackgroundColor(Color.BLACK)
+                /*
+                 * V5 privacy surface:
+                 *
+                 * Fully opaque white. Do not use alpha/translucency here.
+                 */
+                setBackgroundColor(Color.WHITE)
 
                 isClickable = true
 
@@ -1433,6 +1579,13 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             )
 
             protectionOverlay = overlay
+        }.onFailure {
+
+            android.util.Log.w(
+                "AppLockDiag",
+                "V5 failed to install privacy barrier",
+                it
+            )
         }
     }
 
@@ -1456,7 +1609,6 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         targetPackage: String,
         requestId: Long
     ) {
-
         val current =
             pending
                 ?: return
@@ -1470,6 +1622,41 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
         current.lockUiVisible = true
 
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT remove the protection overlay here.
+         *
+         * This callback only means LockActivity exists. It does not guarantee
+         * that its first visible frame has been drawn.
+         *
+         * V4/V5 removes the barrier only from onLockActivityReady().
+         */
+    }
+
+    fun onLockActivityReady(
+        targetPackage: String,
+        requestId: Long
+    ) {
+        val current =
+            pending
+                ?: return
+
+        if (
+            current.packageName != targetPackage ||
+            current.requestId != requestId
+        ) {
+            return
+        }
+
+        current.lockUiReady = true
+
+        /*
+         * LockActivity has now reached its first pre-draw.
+         *
+         * Its opaque security window is ready, so the native protection
+         * barrier can safely be removed.
+         */
         removeProtectionOverlay()
     }
 
@@ -1610,6 +1797,16 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             requestId: Long
         ) {
             instance?.onLockActivityShown(
+                targetPackage,
+                requestId
+            )
+        }
+
+        fun notifyLockActivityReady(
+            targetPackage: String,
+            requestId: Long
+        ) {
+            instance?.onLockActivityReady(
                 targetPackage,
                 requestId
             )
