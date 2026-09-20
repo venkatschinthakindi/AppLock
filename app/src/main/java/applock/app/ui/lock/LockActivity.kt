@@ -112,11 +112,24 @@ class LockActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (authenticationCompleted || isFinishing) return
-        // The challenge left the screen without being satisfied (Home, recents,
-        // power button, another app). Tear it down so the next entry always
-        // produces a brand new challenge instead of resuming this task.
-        finishAndRemoveTask()
+
+        /*
+         * Do NOT cancel the live authentication request from onStop().
+         *
+         * Android legitimately stops an Activity while the user is still
+         * in the same authentication transition: launcher/Recents/SystemUI
+         * can briefly become the reported foreground window, and biometric
+         * or other system surfaces can temporarily cover the lock screen.
+         *
+         * Finishing here was the direct source of the observed flicker:
+         * LockActivity -> launcher/SystemUI -> onStop() -> cancel request ->
+         * service creates a new request -> LockActivity is launched again.
+         *
+         * The requestId remains the source of truth. Genuine hard boundaries
+         * are handled by the service/LockEngine (AppLock main UI, real app
+         * transition, and screen-off), while a stale Activity instance can
+         * only cancel its own exact request in onDestroy().
+         */
     }
 
     override fun onDestroy() {

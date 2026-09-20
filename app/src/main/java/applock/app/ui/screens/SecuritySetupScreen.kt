@@ -1,7 +1,8 @@
 package applock.app.ui.screens
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 
 import android.content.Context
 import androidx.biometric.BiometricManager
@@ -877,10 +878,7 @@ private fun PatternSetupGrid(
         )
     }
 
-    fun distanceBetween(
-        first: Offset,
-        second: Offset
-    ): Float {
+    fun distanceBetween(first: Offset, second: Offset): Float {
         val dx = first.x - second.x
         val dy = first.y - second.y
         return kotlin.math.sqrt(dx * dx + dy * dy)
@@ -891,7 +889,12 @@ private fun PatternSetupGrid(
         width: Float,
         height: Float
     ): Int? {
-        val threshold = minOf(width, height) * 0.14f
+        /*
+         * Keep the hit area generous enough for a finger while keeping
+         * adjacent points distinguishable. The gesture surface itself is
+         * larger than the visible dots, just like a native pattern lock.
+         */
+        val threshold = minOf(width, height) * 0.15f
 
         var bestIndex: Int? = null
         var bestDistance = Float.MAX_VALUE
@@ -929,7 +932,12 @@ private fun PatternSetupGrid(
             val rowDelta = row - previousRow
             val columnDelta = column - previousColumn
 
-            val hasSkippedMiddlePoint =
+            /*
+             * Android-style pattern behaviour: if a move jumps over the
+             * centre point of a straight/diagonal two-cell segment, include
+             * that point automatically.
+             */
+            if (
                 (
                     kotlin.math.abs(rowDelta) == 2 &&
                         columnDelta == 0
@@ -942,8 +950,7 @@ private fun PatternSetupGrid(
                         kotlin.math.abs(rowDelta) == 2 &&
                             kotlin.math.abs(columnDelta) == 2
                         )
-
-            if (hasSkippedMiddlePoint) {
+            ) {
                 val middleRow = (previousRow + row) / 2
                 val middleColumn = (previousColumn + column) / 2
                 val middle = middleRow * 3 + middleColumn
@@ -958,65 +965,98 @@ private fun PatternSetupGrid(
         return result
     }
 
+    fun finishGesture() {
+        if (!isDragging) return
+
+        isDragging = false
+        dragPosition = null
+
+        val completedPattern = dragSelection
+        dragSelection = emptyList()
+
+        if (completedPattern.size >= 4) {
+            onChanged(completedPattern)
+        } else {
+            onChanged(emptyList())
+        }
+    }
+
     val primary = MaterialTheme.colorScheme.primary
     val inactive = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     val background = MaterialTheme.colorScheme.background
 
+    /*
+     * This grid deliberately handles the pointer stream at the Initial
+     * pointer-event pass. Security setup lives inside a vertically scrolling
+     * screen, and allowing the parent scroll container to win the drag can
+     * make the pattern appear non-clickable/non-interactive. Consuming the
+     * gesture here makes the entire 3x3 surface behave as one native-style
+     * pattern gesture.
+     */
     Canvas(
         modifier = Modifier
             .size(290.dp)
             .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { position ->
-                        val index = hitTest(
-                            position = position,
-                            width = size.width.toFloat(),
-                            height = size.height.toFloat()
-                        )
+                awaitEachGesture {
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial
+                    )
 
-                        if (index != null) {
-                            isDragging = true
-                            dragSelection = appendPoint(emptyList(), index)
-                            dragPosition = position
-                        }
-                    },
-                    onDrag = { change, _ ->
-                        if (!isDragging) {
-                            return@detectDragGestures
-                        }
+                    down.consume()
 
-                        dragPosition = change.position
+                    val width = size.width.toFloat()
+                    val height = size.height.toFloat()
 
-                        val index = hitTest(
-                            position = change.position,
-                            width = size.width.toFloat(),
-                            height = size.height.toFloat()
-                        )
+                    val first = hitTest(
+                        down.position,
+                        width,
+                        height
+                    )
 
-                        if (index != null) {
-                            dragSelection = appendPoint(dragSelection, index)
-                        }
-                    },
-                    onDragEnd = {
-                        if (isDragging) {
-                            isDragging = false
-                            dragPosition = null
-
-                            val completedPattern = dragSelection
-
-                            if (completedPattern.size >= 4) {
-                                onChanged(completedPattern)
-                            } else {
-                                onChanged(emptyList())
-                            }
-                        }
-                    },
-                    onDragCancel = {
-                        isDragging = false
+                    if (first == null) {
+                        dragSelection = emptyList()
                         dragPosition = null
-                        dragSelection = selected
+                        isDragging = false
+                        return@awaitEachGesture
                     }
-                )
+
+                    isDragging = true
+                    dragSelection = appendPoint(emptyList(), first)
+                    dragPosition = down.position
+
+                    while (true) {
+                        val event =
+                            awaitPointerEvent(
+                                androidx.compose.ui.input.pointer.PointerEventPass.Initial
+                            )
+                        val change = event.changes.firstOrNull()
+                            ?: continue
+
+                        if (change.pressed) {
+                            change.consume()
+                            dragPosition = change.position
+
+                            val index = hitTest(
+                                change.position,
+                                width,
+                                height
+                            )
+
+                            if (index != null) {
+                                dragSelection =
+                                    appendPoint(
+                                        dragSelection,
+                                        index
+                                    )
+                            }
+                        } else {
+                            change.consume()
+                            finishGesture()
+                            break
+                        }
+                    }
+                }
             }
     ) {
         val nodeRadius = size.minDimension * 0.055f
@@ -1066,3 +1106,4 @@ private fun PatternSetupGrid(
         }
     }
 }
+

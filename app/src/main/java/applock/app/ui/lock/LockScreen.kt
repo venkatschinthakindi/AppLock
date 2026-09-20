@@ -4,7 +4,8 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -476,6 +477,8 @@ private fun PatternLockInput(
     onComplete: (String) -> Unit
 ) {
     var selected by remember { mutableStateOf(emptyList<Int>()) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragPosition by remember { mutableStateOf<Offset?>(null) }
 
     fun addPoint(point: Int) {
         if (selected.contains(point)) return
@@ -496,43 +499,84 @@ private fun PatternLockInput(
         selected = next
     }
 
+    fun finishGesture() {
+        if (!isDragging) return
+
+        isDragging = false
+        dragPosition = null
+
+        val completed = selected
+        selected = emptyList()
+
+        if (completed.size >= 4) {
+            onComplete(completed.joinToString("-"))
+        }
+    }
+
     Box(
         modifier = Modifier
             .size(280.dp)
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
 
-                detectDragGestures(
-                    onDragStart = { position ->
+                awaitEachGesture {
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial
+                    )
+
+                    down.consume()
+
+                    val width = size.width.toFloat()
+                    val height = size.height.toFloat()
+
+                    val first = nearestPatternPoint(
+                        down.position,
+                        width,
+                        height
+                    )
+
+                    if (first == null) {
                         selected = emptyList()
-                        nearestPatternPoint(
-                            position,
-                            size.width.toFloat(),
-                            size.height.toFloat()
-                        )?.let(::addPoint)
-                    },
-                    onDrag = { change, _ ->
-                        nearestPatternPoint(
-                            change.position,
-                            size.width.toFloat(),
-                            size.height.toFloat()
-                        )?.let(::addPoint)
-                        change.consume()
-                    },
-                    onDragEnd = {
-                        if (selected.size >= 4) {
-                            onComplete(selected.joinToString("-"))
-                        }
-                        selected = emptyList()
-                    },
-                    onDragCancel = {
-                        selected = emptyList()
+                        dragPosition = null
+                        isDragging = false
+                        return@awaitEachGesture
                     }
-                )
+
+                    selected = emptyList()
+                    isDragging = true
+                    dragPosition = down.position
+                    addPoint(first)
+
+                    while (true) {
+                        val event =
+                            awaitPointerEvent(
+                                androidx.compose.ui.input.pointer.PointerEventPass.Initial
+                            )
+                        val change = event.changes.firstOrNull()
+                            ?: continue
+
+                        if (change.pressed) {
+                            change.consume()
+                            dragPosition = change.position
+
+                            nearestPatternPoint(
+                                change.position,
+                                width,
+                                height
+                            )?.let(::addPoint)
+                        } else {
+                            change.consume()
+                            finishGesture()
+                            break
+                        }
+                    }
+                }
             }
     ) {
         val activeColor = MaterialTheme.colorScheme.primary
-        val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .45f)
+        val inactiveColor =
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .45f)
         val backgroundColor = MaterialTheme.colorScheme.background
 
         Canvas(Modifier.fillMaxSize()) {
@@ -549,8 +593,18 @@ private fun PatternLockInput(
                 }
             }
 
+            if (isDragging && dragPosition != null && selected.isNotEmpty()) {
+                drawLine(
+                    color = activeColor.copy(alpha = .65f),
+                    start = positions[selected.last()],
+                    end = dragPosition!!,
+                    strokeWidth = 7f
+                )
+            }
+
             positions.forEachIndexed { index, position ->
                 val active = selected.contains(index)
+
                 drawCircle(
                     color = if (active) activeColor else inactiveColor,
                     radius = if (active) 18f else 12f,
@@ -565,7 +619,6 @@ private fun PatternLockInput(
                     )
                 }
             }
-
         }
     }
 }

@@ -64,6 +64,30 @@ object AntiTamperPolicy {
         packageName: String,
         eventType: Int,
         className: CharSequence?
-    ): Boolean = isManagementPackage(packageName) ||
-        isLauncherManagementEvent(packageName, eventType, className)
+    ): Boolean {
+        if (isManagementPackage(packageName)) return true
+        if (isLauncherManagementEvent(packageName, eventType, className)) return true
+
+        // OEM package-management components are not consistent across Android
+        // builds. Only treat a class as management UI when its package itself
+        // has a strong package-management identity; this avoids turning normal
+        // third-party Activities with names like SettingsActivity into a
+        // false uninstall gate.
+        val lowerPackage = packageName.lowercase()
+        val likelyManagementPackage =
+            lowerPackage.contains("packageinstaller") ||
+                lowerPackage.contains("packageuninstaller") ||
+                lowerPackage.contains("permissioncontroller") ||
+                lowerPackage.contains("safecenter") ||
+                lowerPackage.contains("securitycenter") ||
+                lowerPackage.contains("phonemaster") ||
+                lowerPackage.endsWith(".settings") ||
+                lowerPackage.endsWith(".appmanager") ||
+                lowerPackage.contains("appmanager")
+
+        if (!likelyManagementPackage) return false
+
+        val cls = className?.toString()?.lowercase().orEmpty()
+        return managementClassHints.any { cls.contains(it) }
+    }
 }

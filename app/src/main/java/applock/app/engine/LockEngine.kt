@@ -91,6 +91,12 @@ class LockEngine(
             if (parkedPackage != null && parkedPackage != packageName) parkedPackage = null
             if (authorizedPackage != null && authorizedPackage != packageName) authorizedPackage = null
             if (activeRequestPackage != null && activeRequestPackage != packageName) {
+                android.util.Log.d(
+                    "AppLockDiag",
+                    "ENGINE invalidating active request for '$activeRequestPackage' " +
+                        "(id=$activeRequestId) because foreground changed to '$packageName' " +
+                        "-- if this fires while a PIN is being entered, THIS is the bug"
+                )
                 invalidateRequestLocked()
             }
             foregroundPackage = packageName

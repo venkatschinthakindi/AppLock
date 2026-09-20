@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
 import applock.app.AppLockApplication
@@ -25,36 +26,26 @@ import applock.app.ui.lock.SecurityGateActivity
 /**
  * Foreground protected-app enforcement.
  *
- * Detection combines two sources that are now actually independent of each
- * other, not just described as such:
+ * Detection combines:
  *
- *  1. Accessibility window events + a windows-based watchdog (fast path).
- *  2. UsageStatsManager (`UsageStatsForegroundSource`), a different OS
- *     subsystem backed by ActivityManager itself. It keeps reporting the
- *     real foreground app even when an OEM throttles what a background
- *     accessibility service can see -- the failure mode that let a dropped
- *     event AND a same-API watchdog go blind together. It requires the user
- *     to grant "Usage access"; absence of that grant narrows nothing, it
- *     just means this signal has no opinion and detection falls back to (1).
+ * 1. Accessibility window/activity events.
+ * 2. Accessibility getWindows() watchdog.
+ * 3. UsageStatsForegroundSource.
  *
- * Both signals feed a set of "currently visible" packages. The engine's
- * session model is single-foreground by design (matching Android's own
- * single-focus-window model) and is not restructured here to track more than
- * one authorized package at once. What this DOES do for split-screen /
- * multi-window: if a protected, unauthorized package is visible anywhere
- * other than the primary window, the opaque cover goes up defensively (never
- * incorrectly clearing the primary pane's session to do it) until the user
- * actually focuses that pane, at which point it becomes primary and is
- * challenged through the normal, tested single-foreground path. True
- * simultaneous independent challenges for two visible protected panes is not
- * implemented; see VERIFICATION.md.
+ * Management/uninstall authentication (AntiTamperPolicy.isManagementSurface)
+ * is checked UNCONDITIONALLY, first, for every foreign-package event -- see
+ * the comment at the top of handleForeground(). It never goes through the
+ * DEPARTURE/NON_DEPARTURE/APP classification used for ordinary protected-app
+ * detection, so no future addition to that classification can accidentally
+ * short-circuit it again.
  */
 class AppDetectionAccessibilityService : AccessibilityService() {
 
     private val app: AppLockApplication
         get() = application as AppLockApplication
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler =
+        Handler(Looper.getMainLooper())
 
     private data class PendingLock(
         val packageName: String,
@@ -63,54 +54,124 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         var lastLaunchElapsed: Long = 0L
     )
 
-    @Volatile private var pending: PendingLock? = null
+    @Volatile
+    private var pending: PendingLock? = null
+
     private var lastForegroundPackage: String? = null
+
     private var managementAuthorizedUntilElapsed = 0L
+
     private var protectionOverlay: View? = null
+
     private var windowManager: WindowManager? = null
+
     private var watchdogArmed = false
+
     private var lastProtectionRefreshElapsed = 0L
+
     private var gateLaunchElapsed = 0L
 
     override fun onCreate() {
         super.onCreate()
-        windowManager = getSystemService(WindowManager::class.java)
+
+        windowManager =
+            getSystemService(WindowManager::class.java)
+
         instance = this
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+
+        /*
+         * TYPE_VIEW_LONG_CLICKED was tried here for launcher-side long-press
+         * uninstall detection and removed. Most Android launchers implement
+         * icon long-press via custom touch/gesture handling for drag-and-
+         * drop rather than the standard View long-click listener mechanism
+         * that actually dispatches this accessibility event -- so it very
+         * likely never fired for its intended purpose at all. What it DID do
+         * is fire for ordinary in-app long-presses (message bubbles, list
+         * items, anything using standard long-click handling), adding
+         * needless event processing for zero benefit. Uninstall protection
+         * does not depend on catching the launcher long-press moment: the
+         * actual system uninstall-confirmation dialog is a distinct
+         * Activity/window with its own normal window-state-changed event,
+         * caught independently of how the user reached it -- see
+         * `isManagementSurface` being checked unconditionally, first, below.
+         */
         serviceInfo = serviceInfo.apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOWS_CHANGED
+
+            eventTypes =
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOWS_CHANGED
+
             notificationTimeout = 0L
-            // Required so getWindows() can report the real top application
-            // window. Only window package names are read; no content is used.
-            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+
+            /*
+             * Required so getWindows() can report the actual application
+             * windows. Only package/window information is used.
+             */
+            flags =
+                flags or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
-        ForegroundPolicy.refresh(this, force = true)
+
+        ForegroundPolicy.refresh(
+            this,
+            force = true
+        )
+
         hardReset()
+
         app.repository.refreshProtectionState()
-        AntiTamperManager.enforceStrongProtection(this, app.repository.protectedPackages())
+
+        AntiTamperManager.enforceStrongProtection(
+            this,
+            app.repository.protectedPackages()
+        )
     }
 
     // ------------------------------------------------------------- event path
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+    override fun onAccessibilityEvent(
+        event: AccessibilityEvent?
+    ) {
         val e = event ?: return
-        if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            e.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) return
 
-        val pkg = e.packageName?.toString()?.takeIf { it.isNotBlank() }
-            ?: run {
-                // A window changed but we do not know whose. Do not guess:
-                // let the watchdog resolve the real top package.
-                armWatchdog()
-                return
-            }
+        /*
+         * Only real window-transition events are processed. See the comment
+         * in onServiceConnected() for why TYPE_VIEW_LONG_CLICKED was tried
+         * and removed.
+         */
+        val supported =
+            e.eventType ==
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                e.eventType ==
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED
 
-        handleForeground(pkg, e.className, e.eventType)
+        if (!supported) {
+            return
+        }
+
+        val pkg =
+            e.packageName
+                ?.toString()
+                ?.takeIf { it.isNotBlank() }
+                ?: run {
+                    /*
+                     * A window event without a package cannot safely be
+                     * classified here. Let the watchdog resolve the actual
+                     * foreground package.
+                     */
+                    armWatchdog()
+                    return
+                }
+
+        handleForeground(
+            pkg = pkg,
+            className = e.className,
+            eventType = e.eventType
+        )
     }
 
     private fun handleForeground(
@@ -118,394 +179,1190 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         className: CharSequence?,
         eventType: Int
     ) {
-        when (ForegroundPolicy.classify(this, pkg, className, eventType, packageName)) {
+        android.util.Log.d(
+            "AppLockDiag",
+            "handleForeground pkg=$pkg class=$className eventType=$eventType " +
+                "lastForeground=$lastForegroundPackage pendingPkg=${pending?.packageName} " +
+                "pendingReqId=${pending?.requestId} authorizedForLaunch=" +
+                "${app.lockEngine.sessionPackage()}"
+        )
+
+        // -----------------------------------------------------------------
+        // Management/uninstall/tamper surfaces are checked UNCONDITIONALLY,
+        // for every foreign-package event, before anything else -- including
+        // before ForegroundPolicy.classify() gets a chance to run at all.
+        //
+        // This intentionally restores how the app originally worked, before
+        // the DEPARTURE/NON_DEPARTURE/APP classification layer existed. That
+        // layer fixed real bugs (recents re-entry, stale lock screens,
+        // gesture-nav false departures), but it also introduced a NEW class
+        // of bug: any package that classify() resolves to NON_DEPARTURE, or
+        // that reaches onUserLeft() as an ordinary departure, never reaches
+        // the management-surface check below AT ALL, regardless of what
+        // AntiTamperPolicy itself says about it. Several rounds of chasing
+        // "uninstall still not challenged" turned out to be variants of
+        // exactly this: a package correctly listed in
+        // AntiTamperPolicy.exactManagementPackages being short-circuited
+        // before that list was ever consulted. Checking this first,
+        // unconditionally, closes the entire class at once rather than
+        // patching one more individual short-circuit.
+        // -----------------------------------------------------------------
+        if (pkg != packageName) {
+
+            val managementCandidate =
+                AntiTamperPolicy.isManagementSurface(
+                    packageName = pkg,
+                    eventType = eventType,
+                    className = className
+                )
+
+            /*
+             * Management protection is ONLY for AppLock itself.
+             *
+             * Settings/PackageInstaller/permission-controller are shared
+             * Android management surfaces. They must not become an AppLock
+             * authentication boundary merely because the user is uninstalling,
+             * viewing, disabling, or changing another application.
+             *
+             * The candidate check above identifies a possible management
+             * surface. This second check verifies that the visible management
+             * UI is actually acting on AppLock before SecurityGateActivity is
+             * allowed to launch.
+             */
+            val isManagement =
+                managementCandidate &&
+                    isAppLockManagementTarget(
+                        pkg = pkg,
+                        className = className
+                    )
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "isManagementSurface pkg=$pkg class=$className -> $isManagement " +
+                    "(managementGraceActive=${managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime()})"
+            )
+
+            /*
+             * A previously authenticated management surface receives a short
+             * management session so the OS can complete the requested action
+             * without repeatedly launching the gate for every window event.
+             */
+            if (
+                isManagement &&
+                managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime()
+            ) {
+                lastForegroundPackage = pkg
+                return
+            }
+
+            if (!isManagement) {
+                // Returned to an ordinary surface: any temporary management
+                // authorization is no longer relevant.
+                managementAuthorizedUntilElapsed = 0L
+            }
+
+            /*
+             * Management/uninstall protection is independent of the
+             * Protected Apps list. Once an authentication method is
+             * configured, AppLock's own management/uninstall boundary
+             * remains protected even if the user has zero other protected
+             * applications.
+             */
+            if (isManagement && app.repository.authenticationConfigured()) {
+                handleManagementSurface(pkg)
+                lastForegroundPackage = pkg
+                return
+            }
+        }
+
+        /*
+         * Once a departure candidate exists, raw Accessibility events from
+         * the old package are not authoritative. They can be delayed events
+         * from a window that is no longer the user's active app.
+         *
+         * Only the current OS-resolved primary may cancel the candidate.
+         * This prevents an old Telegram event, for example, from cancelling
+         * a confirmed move to WhatsApp and restoring Telegram's session.
+         */
+        provisionalDeparturePackage?.let { candidate ->
+            val resolved =
+                resolveVisiblePackages()
+
+            val primary =
+                resolved.windowsPrimary
+                    ?: resolved.usageStatsPrimary
+
+            if (
+                primary == candidate &&
+                pkg == candidate
+            ) {
+                cancelProvisionalDeparture(candidate)
+            } else {
+                return
+            }
+        }
+
+        /*
+         * Refresh protection state periodically instead of on every
+         * accessibility event.
+         */
+        val nowElapsed =
+            SystemClock.elapsedRealtime()
+
+        if (
+            nowElapsed - lastProtectionRefreshElapsed >=
+                PROTECTION_REFRESH_INTERVAL_MS
+        ) {
+            lastProtectionRefreshElapsed = nowElapsed
+
+            app.repository.refreshProtectionState()
+
+            AntiTamperManager.enforceStrongProtection(
+                this,
+                app.repository.protectedPackages()
+            )
+        }
+
+        val surfaceClassification =
+            ForegroundPolicy.classify(
+                context = this,
+                packageName = pkg,
+                className = className,
+                eventType = eventType,
+                ourPackage = packageName
+            )
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "classify pkg=$pkg class=$className -> $surfaceClassification"
+        )
+
+        when (surfaceClassification) {
 
             ForegroundPolicy.Surface.OUR_SECURITY_UI -> {
-                // Our own lock/gate UI. It must never cancel a request or a
-                // session, and the transition overlay is no longer needed.
+
+                /*
+                 * Our own authentication/security UI must never be treated
+                 * as leaving the protected app.
+                 */
                 app.lockEngine.onSecurityUiVisible()
+
                 removeProtectionOverlay()
+
                 armWatchdog()
+
                 return
             }
 
             ForegroundPolicy.Surface.OUR_MAIN_UI -> {
+
                 handleAppLockMainUiShown()
+
                 return
             }
 
             ForegroundPolicy.Surface.NON_DEPARTURE -> {
-                // IME / permission dialog / share sheet: the user is still
-                // inside the app. Park the session, keep any pending challenge.
+
+                /*
+                 * IME, transient permission UI and other recognized
+                 * non-departure surfaces do not terminate the session.
+                 */
                 app.lockEngine.onNonDepartureSurface()
+
                 armWatchdog()
+
                 return
             }
 
             ForegroundPolicy.Surface.DEPARTURE -> {
+
                 onUserLeft(pkg)
+
                 return
             }
 
-            ForegroundPolicy.Surface.APP -> Unit
+            ForegroundPolicy.Surface.APP -> {
+                // Continue to ordinary protected-app handling below.
+            }
         }
 
-        // --- a real application package is in the foreground ------------------
+        /*
+         * Ordinary protected-app transition.
+         *
+         * If an authentication transaction or authorized session currently
+         * owns the foreground, a different application event is only a
+         * departure candidate. Do not let one noisy event invalidate the
+         * current request/session. The watchdog confirms the departure and
+         * then re-evaluates the replacement application from the OS state.
+         */
+        val previous =
+            lastForegroundPackage
 
-        if (
-            managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime() &&
-            AntiTamperPolicy.isManagementSurface(pkg, eventType, className)
-        ) {
-            lastForegroundPackage = pkg
-            return
-        }
-        if (!AntiTamperPolicy.isManagementSurface(pkg, eventType, className)) {
-            managementAuthorizedUntilElapsed = 0L
-        }
-
-        // The watchdog runs several times a second; refreshing live Android
-        // protection state on every tick would be wasteful. Protection changes
-        // are also pushed from the UI, so a short throttle is safe.
-        val nowElapsed = SystemClock.elapsedRealtime()
-        if (nowElapsed - lastProtectionRefreshElapsed >= PROTECTION_REFRESH_INTERVAL_MS) {
-            lastProtectionRefreshElapsed = nowElapsed
-            app.repository.refreshProtectionState()
-            AntiTamperManager.enforceStrongProtection(this, app.repository.protectedPackages())
-        }
+        val currentOwner =
+            pending?.packageName
+                ?: app.lockEngine.sessionPackage()
+                ?: previous?.takeIf {
+                    app.repository.isProtected(it)
+                }
 
         if (
-            AntiTamperPolicy.isManagementSurface(pkg, eventType, className) &&
-            app.repository.authenticationConfigured() &&
-            app.repository.protectedPackages().isNotEmpty()
+            currentOwner != null &&
+            currentOwner != pkg &&
+            pkg != packageName
         ) {
-            handleManagementSurface(pkg)
-            lastForegroundPackage = pkg
+            scheduleProvisionalDepartureConfirmation(currentOwner)
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "deferred cross-package transition: " +
+                    "owner=$currentOwner newPkg=$pkg " +
+                    "pendingReqId=${pending?.requestId}"
+            )
+
             return
         }
 
-        val previous = lastForegroundPackage
-        if (previous != null && previous != pkg && app.repository.isProtected(previous)) {
-            // Session rules that end when the user leaves the app.
-            val rule = app.repository.getSessionRule()
-            if (rule == SessionRule.AFTER_LEAVING || rule == SessionRule.IMMEDIATELY) {
+        if (
+            previous != null &&
+            previous != pkg &&
+            app.repository.isProtected(previous)
+        ) {
+            val rule =
+                app.repository.getSessionRule()
+
+            if (
+                rule == SessionRule.AFTER_LEAVING ||
+                rule == SessionRule.IMMEDIATELY
+            ) {
                 app.repository.clearUnlock(previous)
             }
         }
+
         lastForegroundPackage = pkg
 
-        val decision = app.lockEngine.onForegroundApp(pkg)
+        val decision =
+            app.lockEngine.onForegroundApp(pkg)
+
         applyDecision(decision)
     }
 
-    /** The user is on the launcher / recents / another entry point. */
-    private fun onUserLeft(pkg: String) {
-        val previous = lastForegroundPackage
-        if (previous != null && app.repository.isProtected(previous)) {
-            val rule = app.repository.getSessionRule()
-            if (rule == SessionRule.AFTER_LEAVING || rule == SessionRule.IMMEDIATELY) {
+    // ------------------------------------------------------- departure path
+
+    private fun onUserLeft(
+        pkg: String
+    ) {
+        val previous =
+            lastForegroundPackage
+
+        /*
+         * A DEPARTURE event is only a candidate. Accessibility can report the
+         * launcher/Recents/SystemUI while the same authentication transition
+         * is still in progress. Do not mutate LockEngine state here.
+         *
+         * The candidate is confirmed by the watchdog after a short debounce:
+         * - if the protected package becomes primary again, the departure is
+         *   cancelled;
+         * - if the launcher/another real app remains primary, the session and
+         *   pending request are cleared;
+         * - the next entry then receives a fresh request.
+         */
+        val owner =
+            pending?.packageName
+                ?: app.lockEngine.sessionPackage()
+                ?: previous?.takeIf {
+                    app.repository.isProtected(it)
+                }
+
+        if (
+            owner != null &&
+            owner != pkg
+        ) {
+            scheduleProvisionalDepartureConfirmation(owner)
+            armWatchdog()
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "provisional departure: owner=$owner " +
+                    "eventPkg=$pkg pendingReqId=${pending?.requestId}"
+            )
+
+            return
+        }
+
+        /*
+         * If there is no protected session/challenge to preserve, this is an
+         * ordinary departure and can be finalized immediately.
+         */
+        finalizeUserLeft(
+            pkg = pkg,
+            previous = previous
+        )
+    }
+
+    private fun finalizeUserLeft(
+        pkg: String,
+        previous: String?
+    ) {
+
+        if (
+            previous != null &&
+            app.repository.isProtected(previous)
+        ) {
+            val rule =
+                app.repository.getSessionRule()
+
+            if (
+                rule == SessionRule.AFTER_LEAVING ||
+                rule == SessionRule.IMMEDIATELY
+            ) {
                 app.repository.clearUnlock(previous)
             }
         }
+
         app.lockEngine.onUserLeftForeground()
-        lastForegroundPackage = if (ForegroundPolicy.isLauncher(pkg)) pkg else null
+
+        lastForegroundPackage =
+            if (ForegroundPolicy.isLauncher(pkg)) {
+                pkg
+            } else {
+                null
+            }
+
         clearPending()
+
         removeProtectionOverlay()
+
         disarmWatchdogIfIdle()
     }
 
-    private fun applyDecision(decision: LockEngine.Decision) {
+    // ------------------------------------------------ provisional departure
+
+    private var provisionalDeparturePackage: String? = null
+
+    private val provisionalDepartureRunnable =
+        Runnable {
+            finalizeProvisionalDeparture()
+        }
+
+    private fun scheduleProvisionalDepartureConfirmation(
+        packageName: String
+    ) {
+        provisionalDeparturePackage =
+            packageName
+
+        mainHandler.removeCallbacks(
+            provisionalDepartureRunnable
+        )
+
+        mainHandler.postDelayed(
+            provisionalDepartureRunnable,
+            DEPARTURE_CONFIRM_DELAY_MS
+        )
+
+        armWatchdog()
+    }
+
+    private fun cancelProvisionalDeparture(
+        packageName: String
+    ) {
+        if (
+            provisionalDeparturePackage != packageName
+        ) {
+            return
+        }
+
+        provisionalDeparturePackage = null
+
+        mainHandler.removeCallbacks(
+            provisionalDepartureRunnable
+        )
+    }
+
+    private fun finalizeProvisionalDeparture() {
+
+        val owner =
+            provisionalDeparturePackage
+                ?: return
+
+        provisionalDeparturePackage = null
+
+        val visible =
+            resolveVisiblePackages()
+
+        /*
+         * Prefer the active accessibility window because UsageStats can lag
+         * behind a real task switch by a few hundred milliseconds. UsageStats
+         * remains the fallback when no active application window is exposed.
+         */
+        val primary =
+            visible.windowsPrimary
+                ?: visible.usageStatsPrimary
+
+        /*
+         * If our own security UI is still the active surface, the user is
+         * still inside the authentication transaction. Keep it alive.
+         */
+        if (
+            primary == packageName ||
+            primary == owner
+        ) {
+            return
+        }
+
+        /*
+         * A known transient surface (IME/SystemUI overlay/document picker)
+         * is not a real app departure. Keep the session/challenge alive and
+         * let the next foreground event cancel the provisional state.
+         */
+        if (
+            primary != null &&
+            visible.windowsPrimary == primary &&
+            ForegroundPolicy.classify(
+                context = this,
+                packageName = primary,
+                className = visible.windowsPrimaryClass,
+                eventType =
+                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                ourPackage = packageName
+            ) == ForegroundPolicy.Surface.NON_DEPARTURE
+        ) {
+            scheduleProvisionalDepartureConfirmation(owner)
+            return
+        }
+
+        /*
+         * No owner window and no replacement foreground app is an actual
+         * disappearance (task closed/removed). Treat it as a real boundary.
+         * Likewise, a launcher or another launchable application that remains
+         * primary means the user has actually left the protected app.
+         */
+        finalizeUserLeft(
+            pkg = primary ?: owner,
+            previous = owner
+        )
+    }
+
+    // --------------------------------------------------------- lock decision
+
+    private fun applyDecision(
+        decision: LockEngine.Decision
+    ) {
+
         if (!decision.requireAuth) {
-            // No challenge needed for the current foreground app.
-            if (pending != null) clearPending()
+
+            if (pending != null) {
+                clearPending()
+            }
+
             removeProtectionOverlay()
+
             if (app.lockEngine.hasActiveSession()) {
-                // A live session must be watched: if the "user left" event is
-                // ever dropped, the watchdog is what ends the session and makes
-                // the next entry challenge again.
+                /*
+                 * Active sessions must continue to be watched so that a
+                 * dropped accessibility event cannot leave the application
+                 * permanently unlocked.
+                 */
                 armWatchdog()
             } else {
                 disarmWatchdogIfIdle()
             }
+
             return
         }
 
-        val current = pending
-        if (current != null &&
-            current.packageName == decision.packageName &&
-            current.requestId == decision.requestId
+        val current =
+            pending
+
+        /*
+         * Same package + same request means the existing challenge is still
+         * valid. Never replace it with a second request.
+         */
+        if (
+            current != null &&
+            current.packageName ==
+                decision.packageName &&
+            current.requestId ==
+                decision.requestId
         ) {
-            // Same challenge, still in flight. Never disarm it here: that was
-            // the race that let protected apps through while the lock screen
-            // was still starting.
+
             if (!current.lockUiVisible) {
                 showProtectionOverlay()
                 maybeRelaunchLockUi(current)
             }
+
             armWatchdog()
+
             return
         }
 
-        pending = PendingLock(decision.packageName, decision.requestId)
+        /*
+         * New authentication request.
+         */
+        pending =
+            PendingLock(
+                packageName = decision.packageName,
+                requestId = decision.requestId
+            )
+
         showProtectionOverlay()
+
         app.lockEngine.markAuthUiShown()
-        launchProtectedAppGate(decision.packageName, decision.requestId)
+
+        launchProtectedAppGate(
+            targetPackage = decision.packageName,
+            requestId = decision.requestId
+        )
+
         armWatchdog()
     }
 
     // --------------------------------------------------------- watchdog path
 
-    private val watchdogRunnable = object : Runnable {
-        override fun run() {
-            if (!watchdogArmed) return
-            runCatching { watchdogTick() }
-            val interval = if (pending != null) PENDING_WATCHDOG_INTERVAL_MS else WATCHDOG_INTERVAL_MS
-            mainHandler.postDelayed(this, interval)
+    private val watchdogRunnable =
+        object : Runnable {
+
+            override fun run() {
+
+                if (!watchdogArmed) {
+                    return
+                }
+
+                runCatching {
+                    watchdogTick()
+                }
+
+                val interval =
+                    if (pending != null) {
+                        PENDING_WATCHDOG_INTERVAL_MS
+                    } else {
+                        WATCHDOG_INTERVAL_MS
+                    }
+
+                mainHandler.postDelayed(
+                    this,
+                    interval
+                )
+            }
         }
-    }
 
     private fun armWatchdog() {
-        val interval = if (pending != null) PENDING_WATCHDOG_INTERVAL_MS else WATCHDOG_INTERVAL_MS
-        if (watchdogArmed) return
+
+        if (watchdogArmed) {
+            return
+        }
+
         watchdogArmed = true
-        mainHandler.postDelayed(watchdogRunnable, interval)
+
+        val interval =
+            if (pending != null) {
+                PENDING_WATCHDOG_INTERVAL_MS
+            } else {
+                WATCHDOG_INTERVAL_MS
+            }
+
+        mainHandler.postDelayed(
+            watchdogRunnable,
+            interval
+        )
     }
 
     private fun disarmWatchdogIfIdle() {
-        if (pending == null && !app.lockEngine.hasActiveSession()) {
+
+        if (
+            pending == null &&
+            !app.lockEngine.hasActiveSession()
+        ) {
             watchdogArmed = false
-            mainHandler.removeCallbacks(watchdogRunnable)
+
+            mainHandler.removeCallbacks(
+                watchdogRunnable
+            )
         }
     }
 
     private fun watchdogTick() {
-        val visible = resolveVisiblePackages()
-        val p = pending
 
-        // Prefer usage stats' notion of "the" foreground package when it has
-        // an opinion -- it survives OEM accessibility throttling that the
-        // windows-based signal does not. Fall back to whichever windows-based
-        // candidate looked most authoritative.
-        val primary = visible.usageStatsPrimary ?: visible.windowsPrimary
+        /*
+         * A departure candidate has priority over the normal pending-session
+         * watchdog. If the user really left the challenged/authorized app,
+         * the candidate must be allowed to expire and clear that state.
+         * Until then, competing foreground events are ignored.
+         */
+        val provisionalOwner =
+            provisionalDeparturePackage
 
-        if (primary != null && primary != packageName) {
-            if (primary != lastForegroundPackage || (p != null && primary == p.packageName)) {
-                handleForeground(primary, null, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        if (provisionalOwner != null) {
+
+            val visible =
+                resolveVisiblePackages()
+
+            val primary =
+                visible.windowsPrimary
+                    ?: visible.usageStatsPrimary
+
+            if (
+                primary == provisionalOwner ||
+                primary == packageName
+            ) {
+                cancelProvisionalDeparture(provisionalOwner)
             }
+
+            return
         }
 
-        // Split-screen / multi-window defense.
-        //
-        // The engine's session model is deliberately single-foreground (one
-        // authorized package at a time) -- that is what its 13-case
-        // regression suite validates, and it is correct for how Android
-        // itself hands out input focus: only one window is ever truly
-        // interactive at once. Calling the normal foreground path
-        // (`handleForeground` / `engine.onForegroundApp`) for a SECOND
-        // visible package in the same tick was tried and reverted: it mutated
-        // the engine's single `foregroundPackage` slot and could tear down a
-        // different, legitimately authorized app's session just because a
-        // second window (a real split-screen pane, or even a transient extra
-        // window during a normal transition) happened to be visible
-        // alongside it.
-        //
-        // So this check is deliberately read-only with respect to every
-        // other package's session state. It never creates a request for the
-        // secondary package and never touches authorizedPackage/
-        // foregroundPackage. If it finds a protected, unauthorized package
-        // visible anywhere other than the primary window, it blunts the
-        // exposure the only way that is safe without a larger, map-based
-        // per-package engine model: the full-screen opaque cover goes up
-        // (safe -- it never lets content through, it just also temporarily
-        // covers the authorized pane too) until the user brings that pane
-        // into focus, at which point it naturally becomes `primary` on the
-        // next tick and is challenged through the normal, tested path.
-        //
-        // This is an honest partial mitigation, not full simultaneous
-        // dual-pane challenging -- see VERIFICATION.md.
-        val secondaryExposure = visible.all.any { pkg ->
-            pkg.isNotBlank() &&
-                pkg != packageName &&
-                pkg != primary &&
-                app.repository.isProtected(pkg) &&
-                !app.lockEngine.isAuthorizedForLaunch(pkg)
-        }
+        /*
+         * A pending authentication is transactional. While it is active,
+         * there is no reason to query UsageStats on every 80ms tick: raw
+         * foreground disagreement must not alter the request, and the
+         * LockActivity lifecycle callback is the authoritative UI signal.
+         *
+         * This removes a significant source of OEM-dependent churn and
+         * reduces background work while the user is entering a credential.
+         */
+        val current =
+            pending
 
-        val current = pending
-        when {
-            current != null -> {
-                val primaryIsOurs = primary == null || primary == packageName
-                val challengeTargetVisible = current.packageName in visible.all ||
-                    (!primaryIsOurs && primary == current.packageName)
-                if (challengeTargetVisible) {
-                    // The protected app is on screen and our lock UI may not
-                    // be. Re-assert the barrier immediately and retry.
-                    current.lockUiVisible = false
-                    showProtectionOverlay()
-                    maybeRelaunchLockUi(current)
-                } else if (secondaryExposure || !current.lockUiVisible) {
-                    showProtectionOverlay()
-                    maybeRelaunchLockUi(current)
-                }
-            }
+        if (current != null) {
 
-            secondaryExposure -> {
-                // No primary challenge outstanding, but a protected,
-                // unauthorized package is visible in a secondary pane. Keep
-                // the cover up and keep polling (do NOT disarm) so it comes
-                // down the instant this clears rather than staying stuck.
-                showProtectionOverlay()
-            }
-
-            else -> {
+            if (
+                !app.lockEngine.isRequestActive(
+                    current.packageName,
+                    current.requestId
+                )
+            ) {
+                clearPending()
                 removeProtectionOverlay()
                 disarmWatchdogIfIdle()
+                return
             }
+
+            if (!current.lockUiVisible) {
+                showProtectionOverlay()
+                maybeRelaunchLockUi(current)
+            } else {
+                removeProtectionOverlay()
+            }
+
+            return
+        }
+
+        /*
+         * No pending challenge and no departure candidate: the watchdog is
+         * now only a recovery signal for an already-authorized session or a
+         * missed foreground event.
+         */
+        val visible =
+            resolveVisiblePackages()
+
+        val primary =
+            visible.windowsPrimary
+                ?: visible.usageStatsPrimary
+
+        val secondaryExposure =
+            visible.all.any { pkgName ->
+
+                pkgName.isNotBlank() &&
+                    pkgName != packageName &&
+                    pkgName != primary &&
+                    app.repository.isProtected(pkgName) &&
+                    !app.lockEngine.isAuthorizedForLaunch(pkgName)
+            }
+
+        if (secondaryExposure) {
+            showProtectionOverlay()
+        } else if (!app.lockEngine.hasActiveSession()) {
+            removeProtectionOverlay()
+            disarmWatchdogIfIdle()
         }
     }
+
+    // ----------------------------------------------------- visible packages
 
     private data class VisiblePackages(
         val all: Set<String>,
         val windowsPrimary: String?,
+        val windowsPrimaryClass: String?,
         val usageStatsPrimary: String?
     )
 
-    /**
-     * Combines two independent signals of what is currently visible/foreground:
-     *
-     *  1. Accessibility window info (`getWindows()`), scanning ALL active or
-     *     focused TYPE_APPLICATION windows, not just the first match, so a
-     *     split-screen or freeform pane is never invisible to this check.
-     *  2. UsageStatsManager, a wholly different OS subsystem that keeps
-     *     working even when an OEM throttles what a background accessibility
-     *     service can see. Empty when the user hasn't granted Usage access;
-     *     that is treated as "no opinion", never as "nothing is foregrounded".
-     *
-     * Neither signal being available narrows what gets challenged; only
-     * clears removed a package from consideration, never a failure to resolve.
-     */
     private fun resolveVisiblePackages(): VisiblePackages {
-        val windowPackages = linkedSetOf<String>()
+
+        val windowPackages =
+            linkedSetOf<String>()
+
         var windowsPrimary: String? = null
+        var windowsPrimaryClass: String? = null
+
         runCatching {
-            val list: List<AccessibilityWindowInfo> = windows ?: emptyList()
+
+            val list: List<AccessibilityWindowInfo> =
+                windows ?: emptyList()
+
             for (w in list) {
-                if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
-                val root = w.root ?: continue
-                val name = root.packageName?.toString()
-                if (name.isNullOrBlank()) continue
+
+                if (
+                    w.type !=
+                        AccessibilityWindowInfo.TYPE_APPLICATION
+                ) {
+                    continue
+                }
+
+                val root =
+                    w.root
+                        ?: continue
+
+                val name =
+                    root.packageName
+                        ?.toString()
+
+                if (name.isNullOrBlank()) {
+                    continue
+                }
+
                 windowPackages.add(name)
-                if (windowsPrimary == null && (w.isActive || w.isFocused)) {
+
+                if (
+                    windowsPrimary == null &&
+                    (w.isActive || w.isFocused)
+                ) {
                     windowsPrimary = name
+                    windowsPrimaryClass =
+                        root.className
+                            ?.toString()
                 }
             }
         }
 
-        val usageStatsPackages = runCatching {
-            UsageStatsForegroundSource.currentForegroundPackages(this)
-        }.getOrDefault(emptySet())
+        val usageStatsPackages =
+            runCatching {
+                UsageStatsForegroundSource
+                    .currentForegroundPackages(this)
+            }.getOrDefault(emptySet())
 
-        val usageStatsPrimary = usageStatsPackages
-            .firstOrNull { it != packageName }
+        val usageStatsPrimary =
+            usageStatsPackages
+                .firstOrNull {
+                    it != packageName
+                }
 
         return VisiblePackages(
-            all = windowPackages + usageStatsPackages,
-            windowsPrimary = windowsPrimary,
-            usageStatsPrimary = usageStatsPrimary
+            all =
+                windowPackages +
+                    usageStatsPackages,
+            windowsPrimary =
+                windowsPrimary,
+            windowsPrimaryClass =
+                windowsPrimaryClass,
+            usageStatsPrimary =
+                usageStatsPrimary
         )
     }
 
     // ------------------------------------------------------------ lock UI ops
 
-    private fun maybeRelaunchLockUi(current: PendingLock) {
-        val now = SystemClock.elapsedRealtime()
-        if (now - current.lastLaunchElapsed < ACTIVITY_START_WATCHDOG_MS) return
-        if (!app.lockEngine.isRequestActive(current.packageName, current.requestId)) {
+    private fun maybeRelaunchLockUi(
+        current: PendingLock
+    ) {
+
+        val now =
+            SystemClock.elapsedRealtime()
+
+        if (
+            now - current.lastLaunchElapsed <
+                ACTIVITY_START_WATCHDOG_MS
+        ) {
+            return
+        }
+
+        if (
+            !app.lockEngine.isRequestActive(
+                current.packageName,
+                current.requestId
+            )
+        ) {
             clearPending()
             removeProtectionOverlay()
             return
         }
-        launchProtectedAppGate(current.packageName, current.requestId)
+
+        launchProtectedAppGate(
+            targetPackage = current.packageName,
+            requestId = current.requestId
+        )
     }
 
-    private fun launchProtectedAppGate(targetPackage: String, requestId: Long) {
-        val current = pending ?: return
-        if (current.packageName != targetPackage || current.requestId != requestId) return
-        current.lastLaunchElapsed = SystemClock.elapsedRealtime()
+    private fun launchProtectedAppGate(
+        targetPackage: String,
+        requestId: Long
+    ) {
+
+        val current =
+            pending
+                ?: return
+
+        if (
+            current.packageName != targetPackage ||
+            current.requestId != requestId
+        ) {
+            return
+        }
+
+        current.lastLaunchElapsed =
+            SystemClock.elapsedRealtime()
 
         mainHandler.post {
-            val live = pending ?: return@post
-            if (live.packageName != targetPackage || live.requestId != requestId) return@post
-            if (!app.lockEngine.isRequestActive(targetPackage, requestId)) return@post
+
+            val live =
+                pending
+                    ?: return@post
+
+            if (
+                live.packageName != targetPackage ||
+                live.requestId != requestId
+            ) {
+                return@post
+            }
+
+            if (
+                !app.lockEngine.isRequestActive(
+                    targetPackage,
+                    requestId
+                )
+            ) {
+                return@post
+            }
+
             runCatching {
+
                 startActivity(
-                    android.content.Intent(this, LockActivity::class.java).apply {
+                    android.content.Intent(
+                        this,
+                        LockActivity::class.java
+                    ).apply {
+
                         addFlags(
                             android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                                 android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
                                 android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
                                 android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
                         )
-                        putExtra(LockActivity.EXTRA_PACKAGE_NAME, targetPackage)
-                        putExtra(LockActivity.EXTRA_REQUEST_ID, requestId)
+
+                        putExtra(
+                            LockActivity.EXTRA_PACKAGE_NAME,
+                            targetPackage
+                        )
+
+                        putExtra(
+                            LockActivity.EXTRA_REQUEST_ID,
+                            requestId
+                        )
                     }
                 )
             }
+
             armWatchdog()
         }
     }
 
-    private fun handleManagementSurface(targetPackage: String) {
-        if (AntiTamperManager.consumeManagementAccess(targetPackage)) {
-            managementAuthorizedUntilElapsed = SystemClock.elapsedRealtime() + MANAGEMENT_SESSION_TTL_MS
+    // ------------------------------------------------------- management gate
+
+    /**
+     * Handles AppLock anti-tamper / application-management surfaces.
+     *
+     * This path is intentionally separate from LockActivity because the user
+     * is authenticating an administrative action against AppLock itself,
+     * rather than authenticating entry into another protected application.
+     */
+    /**
+     * Returns true only when the visible Android management surface appears
+     * to be operating on AppLock itself.
+     *
+     * We deliberately inspect accessibility text here rather than treating
+     * the entire Settings/PackageInstaller package as protected. Otherwise
+     * uninstalling or managing ANY application on the device would launch
+     * AppLock authentication, which is unrelated to AppLock's own tamper
+     * boundary.
+     */
+    private fun isAppLockManagementTarget(
+        pkg: String,
+        className: CharSequence?
+    ): Boolean {
+        val cls = className?.toString()?.lowercase().orEmpty()
+
+        /*
+         * Do not gate a generic Settings home/list screen simply because the
+         * package is com.android.settings. The target must be an actual
+         * application-management surface.
+         */
+        val managementClass =
+            cls.contains("uninstall") ||
+                cls.contains("appinfo") ||
+                cls.contains("applicationinfo") ||
+                cls.contains("installedapp") ||
+                cls.contains("appdetails") ||
+                cls.contains("packageinstaller") ||
+                cls.contains("packageuninstaller") ||
+                cls.contains("manageapplications") ||
+                cls.contains("permission") ||
+                cls.contains("deviceadmin") ||
+                cls.contains("safecenter") ||
+                cls.contains("securitycenter") ||
+                cls.contains("appmanager")
+
+        /*
+         * Launcher-side long-press menus can have generic class names, so
+         * allow them when the accessibility hierarchy itself contains the
+         * AppLock label plus a management action.
+         */
+        val root =
+            rootInActiveWindow
+
+        val visibleText =
+            buildString {
+                append(root?.text?.toString().orEmpty())
+                append(' ')
+                append(root?.contentDescription?.toString().orEmpty())
+                collectAccessibilityText(
+                    root = root,
+                    output = this
+                )
+            }.lowercase()
+
+        val appLabel =
+            runCatching {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(
+                        packageName,
+                        0
+                    )
+                ).toString()
+            }.getOrDefault("AppLock")
+
+        val appLabelLower =
+            appLabel.lowercase()
+
+        val mentionsAppLock =
+            visibleText.contains(appLabelLower) ||
+                visibleText.contains(packageName.lowercase()) ||
+                visibleText.contains("applock")
+
+        if (!mentionsAppLock) {
+            return false
+        }
+
+        val managementActionVisible =
+            visibleText.contains("uninstall") ||
+                visibleText.contains("remove") ||
+                visibleText.contains("app info") ||
+                visibleText.contains("application info") ||
+                visibleText.contains("disable") ||
+                visibleText.contains("force stop") ||
+                visibleText.contains("clear data") ||
+                visibleText.contains("storage") ||
+                visibleText.contains("permissions") ||
+                visibleText.contains("device admin")
+
+        /*
+         * For a strong management Activity, the target label is sufficient.
+         * For a generic launcher/Settings container, require an explicit
+         * management action as well to avoid challenging while merely
+         * browsing a list of applications.
+         */
+        return if (managementClass) {
+            true
+        } else {
+            managementActionVisible
+        }
+    }
+
+    private fun collectAccessibilityText(
+        root: AccessibilityNodeInfo?,
+        output: StringBuilder
+    ) {
+        if (root == null) return
+
+        for (index in 0 until root.childCount) {
+            val child =
+                runCatching {
+                    root.getChild(index)
+                }.getOrNull() ?: continue
+
+            output.append(' ')
+            output.append(child.text?.toString().orEmpty())
+            output.append(' ')
+            output.append(child.contentDescription?.toString().orEmpty())
+
+            collectAccessibilityText(
+                root = child,
+                output = output
+            )
+
+            runCatching {
+                child.recycle()
+            }
+        }
+    }
+
+    private fun handleManagementSurface(
+        targetPackage: String
+    ) {
+
+        /*
+         * A successful management authentication grants a short-lived
+         * authorization for this exact management package.
+         */
+        if (
+            AntiTamperManager.consumeManagementAccess(
+                targetPackage
+            )
+        ) {
+
+            managementAuthorizedUntilElapsed =
+                SystemClock.elapsedRealtime() +
+                    MANAGEMENT_SESSION_TTL_MS
+
             removeProtectionOverlay()
+
             clearPending()
+
             gateLaunchElapsed = 0L
+
             return
         }
 
-        // Reaching a management surface means the user left whatever protected
-        // app they were in. That session must not survive, or returning to the
-        // app afterwards would skip the challenge.
+        /*
+         * Capture this BEFORE clearing it.
+         *
+         * The old faulty sequence effectively did:
+         *
+         *     clearPending()
+         *     if (pending != null) ...
+         *
+         * which can never be true.
+         *
+         * A management surface is its own authentication boundary and must
+         * still launch SecurityGateActivity even when another challenge was
+         * previously pending.
+         */
+        val hadPendingChallenge =
+            pending != null
+
+        /*
+         * The user has crossed into a management surface. Any protected-app
+         * session must therefore be invalidated.
+         */
         app.lockEngine.onUserLeftForeground()
+
         clearPending()
 
-        if (pending != null) return
-        val now = SystemClock.elapsedRealtime()
-        if (now - gateLaunchElapsed < GATE_RELAUNCH_INTERVAL_MS) return
+        provisionalDeparturePackage = null
+
+        mainHandler.removeCallbacks(
+            provisionalDepartureRunnable
+        )
+
+        /*
+         * If a previous protected-app challenge was pending, allow the
+         * management gate to launch immediately rather than being suppressed
+         * by the ordinary relaunch throttle.
+         */
+        if (hadPendingChallenge) {
+            gateLaunchElapsed = 0L
+        }
+
+        val now =
+            SystemClock.elapsedRealtime()
+
+        if (
+            now - gateLaunchElapsed <
+                GATE_RELAUNCH_INTERVAL_MS
+        ) {
+            return
+        }
+
         gateLaunchElapsed = now
 
+        /*
+         * Hide the underlying management screen immediately while the
+         * authentication UI is being launched.
+         */
         showProtectionOverlay()
+
         app.lockEngine.markAuthUiShown()
+
         mainHandler.post {
+
             runCatching {
+
                 startActivity(
-                    android.content.Intent(this, SecurityGateActivity::class.java).apply {
+                    android.content.Intent(
+                        this,
+                        SecurityGateActivity::class.java
+                    ).apply {
+
                         addFlags(
                             android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                                 android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
                                 android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
                                 android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
                         )
-                        putExtra(SecurityGateActivity.EXTRA_MANAGEMENT_PACKAGE, targetPackage)
+
+                        putExtra(
+                            SecurityGateActivity.EXTRA_MANAGEMENT_PACKAGE,
+                            targetPackage
+                        )
                     }
                 )
-            }.onFailure { removeProtectionOverlay() }
+            }.onFailure {
+
+                /*
+                 * If Android rejects the Activity launch, do not leave a
+                 * permanent black barrier over the management screen.
+                 */
+                removeProtectionOverlay()
+            }
         }
     }
 
+    // ----------------------------------------------------------- AppLock UI
+
     private fun handleAppLockMainUiShown() {
-        val previous = lastForegroundPackage
-        if (previous != null && app.repository.isProtected(previous)) {
-            val rule = app.repository.getSessionRule()
-            if (rule == SessionRule.AFTER_LEAVING || rule == SessionRule.IMMEDIATELY) {
+
+        val previous =
+            lastForegroundPackage
+
+        if (
+            previous != null &&
+            app.repository.isProtected(previous)
+        ) {
+
+            val rule =
+                app.repository.getSessionRule()
+
+            if (
+                rule == SessionRule.AFTER_LEAVING ||
+                rule == SessionRule.IMMEDIATELY
+            ) {
                 app.repository.clearUnlock(previous)
             }
         }
+
         app.lockEngine.onAppLockVisible()
+
         lastForegroundPackage = null
+
         clearPending()
+
+        provisionalDeparturePackage = null
+
+        mainHandler.removeCallbacks(
+            provisionalDepartureRunnable
+        )
+
         managementAuthorizedUntilElapsed = 0L
+
         removeProtectionOverlay()
+
         disarmWatchdogIfIdle()
     }
 
@@ -516,142 +1373,293 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     // ------------------------------------------------------------- overlay ops
 
     /**
-     * The protection overlay must hide the protected app's CONTENT the
-     * instant a challenge is decided, not just its touch input.
+     * The opaque barrier protects the underlying protected application while
+     * the authentication Activity is being launched.
      *
-     * Detection can never have zero latency -- the accessibility event
-     * pipeline itself has some delivery delay, that is a platform constraint,
-     * not a bug -- so there is always a brief window between "we decided this
-     * needs a challenge" and "LockActivity is actually drawn on top". A
-     * touch-blocking-but-transparent overlay leaves the protected app's
-     * screen fully visible (just not interactive) during that window, which
-     * for a screen a bystander could glance at is its own exposure. The
-     * overlay is opaque so the screen goes dark immediately and is replaced
-     * by LockActivity's real UI a moment later, never the other way round.
+     * It is deliberately opaque and FLAG_SECURE so protected content is not
+     * left visible during the Activity-launch latency window.
      */
     private fun showProtectionOverlay() {
-        if (protectionOverlay != null) return
-        val wm = windowManager ?: return
-        val overlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-            isClickable = true
-            isFocusable = false
-            setOnTouchListener { _: View, _: MotionEvent -> true }
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+
+        if (protectionOverlay != null) {
+            return
         }
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_SECURE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.OPAQUE
-        ).apply { gravity = Gravity.TOP or Gravity.START }
+
+        val wm =
+            windowManager
+                ?: return
+
+        val overlay =
+            FrameLayout(this).apply {
+
+                setBackgroundColor(Color.BLACK)
+
+                isClickable = true
+
+                isFocusable = false
+
+                setOnTouchListener {
+                        _: View,
+                        _: MotionEvent ->
+                    true
+                }
+
+                importantForAccessibility =
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+
+        val params =
+            WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_SECURE or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.OPAQUE
+            ).apply {
+
+                gravity =
+                    Gravity.TOP or
+                        Gravity.START
+            }
+
         runCatching {
-            wm.addView(overlay, params)
+
+            wm.addView(
+                overlay,
+                params
+            )
+
             protectionOverlay = overlay
         }
     }
 
     fun removeProtectionOverlay() {
-        val overlay = protectionOverlay ?: return
+
+        val overlay =
+            protectionOverlay
+                ?: return
+
         protectionOverlay = null
-        runCatching { windowManager?.removeViewImmediate(overlay) }
+
+        runCatching {
+            windowManager
+                ?.removeViewImmediate(overlay)
+        }
     }
 
-    // ------------------------------------------------------------- callbacks
+    // ------------------------------------------------------------ callbacks
 
-    fun onLockActivityShown(targetPackage: String, requestId: Long) {
-        val current = pending ?: return
-        if (current.packageName != targetPackage || current.requestId != requestId) return
+    fun onLockActivityShown(
+        targetPackage: String,
+        requestId: Long
+    ) {
+
+        val current =
+            pending
+                ?: return
+
+        if (
+            current.packageName != targetPackage ||
+            current.requestId != requestId
+        ) {
+            return
+        }
+
         current.lockUiVisible = true
+
         removeProtectionOverlay()
     }
 
-    fun onLockActivityDismissed(targetPackage: String, requestId: Long) {
-        val current = pending ?: return
-        if (current.packageName != targetPackage || current.requestId != requestId) return
+    fun onLockActivityDismissed(
+        targetPackage: String,
+        requestId: Long
+    ) {
+
+        val current =
+            pending
+                ?: return
+
+        if (
+            current.packageName != targetPackage ||
+            current.requestId != requestId
+        ) {
+            return
+        }
+
         clearPending()
+
         removeProtectionOverlay()
+
         disarmWatchdogIfIdle()
     }
 
-    fun onAuthenticationSucceeded(targetPackage: String, requestId: Long) {
-        val current = pending
-        if (current != null &&
+    fun onAuthenticationSucceeded(
+        targetPackage: String,
+        requestId: Long
+    ) {
+
+        val current =
+            pending
+
+        if (
+            current != null &&
             current.packageName == targetPackage &&
             current.requestId == requestId
         ) {
             clearPending()
         }
-        lastForegroundPackage = targetPackage
+
+        cancelProvisionalDeparture(targetPackage)
+
+        lastForegroundPackage =
+            targetPackage
+
         removeProtectionOverlay()
+
         armWatchdog()
     }
 
+    // ------------------------------------------------------------- lifecycle
+
     private fun hardReset() {
+
         mainHandler.removeCallbacksAndMessages(null)
+
         watchdogArmed = false
+
         lastForegroundPackage = null
+
         clearPending()
+
+        provisionalDeparturePackage = null
+
         managementAuthorizedUntilElapsed = 0L
+
         lastProtectionRefreshElapsed = 0L
+
         gateLaunchElapsed = 0L
+
         removeProtectionOverlay()
+
         app.lockEngine.resetTransitionState()
     }
 
     override fun onInterrupt() {
+
         hardReset()
+
         app.repository.refreshProtectionState()
     }
 
     override fun onDestroy() {
+
         mainHandler.removeCallbacksAndMessages(null)
+
         watchdogArmed = false
+
+        provisionalDeparturePackage = null
+
         removeProtectionOverlay()
-        if (instance === this) instance = null
+
+        if (instance === this) {
+            instance = null
+        }
+
         super.onDestroy()
     }
 
-    companion object {
-        const val MANAGEMENT_SESSION_TTL_MS = 30_000L
-        const val ACTIVITY_START_WATCHDOG_MS = 600L
-        const val WATCHDOG_INTERVAL_MS = 250L
-        const val PENDING_WATCHDOG_INTERVAL_MS = 80L
-        const val PROTECTION_REFRESH_INTERVAL_MS = 1_000L
-        const val GATE_RELAUNCH_INTERVAL_MS = 1_500L
+    // ------------------------------------------------------------- companion
 
-        @Volatile private var instance: AppDetectionAccessibilityService? = null
+    companion object {
+
+        const val MANAGEMENT_SESSION_TTL_MS =
+            30_000L
+
+        const val ACTIVITY_START_WATCHDOG_MS =
+            600L
+
+        const val WATCHDOG_INTERVAL_MS =
+            250L
+
+        const val PENDING_WATCHDOG_INTERVAL_MS =
+            80L
+
+        const val DEPARTURE_CONFIRM_DELAY_MS =
+            450L
+
+        const val PROTECTION_REFRESH_INTERVAL_MS =
+            1_000L
+
+        const val GATE_RELAUNCH_INTERVAL_MS =
+            1_500L
+
+        @Volatile
+        private var instance:
+            AppDetectionAccessibilityService? =
+            null
 
         fun releaseForegroundBarrier() {
             instance?.removeProtectionOverlay()
         }
 
-        fun notifyLockActivityShown(targetPackage: String, requestId: Long) {
-            instance?.onLockActivityShown(targetPackage, requestId)
+        fun notifyLockActivityShown(
+            targetPackage: String,
+            requestId: Long
+        ) {
+            instance?.onLockActivityShown(
+                targetPackage,
+                requestId
+            )
         }
 
-        fun notifyLockActivityDismissed(targetPackage: String, requestId: Long) {
-            instance?.onLockActivityDismissed(targetPackage, requestId)
+        fun notifyLockActivityDismissed(
+            targetPackage: String,
+            requestId: Long
+        ) {
+            instance?.onLockActivityDismissed(
+                targetPackage,
+                requestId
+            )
         }
 
-        fun notifyAuthenticationSucceeded(targetPackage: String, requestId: Long) {
-            instance?.onAuthenticationSucceeded(targetPackage, requestId)
+        fun notifyAuthenticationSucceeded(
+            targetPackage: String,
+            requestId: Long
+        ) {
+            instance?.onAuthenticationSucceeded(
+                targetPackage,
+                requestId
+            )
         }
 
         fun notifyAppLockMainUiShown() {
             instance?.handleAppLockMainUiShown()
         }
 
-        /** Called when the screen turns off / the device is locked. */
+        /**
+         * Called when the screen turns off / the device is locked.
+         */
         fun notifyScreenOff() {
+
             instance?.let { service ->
+
                 service.lastForegroundPackage = null
+
                 service.clearPending()
+
+                service.provisionalDeparturePackage = null
+
+                service.mainHandler.removeCallbacks(
+                    service.provisionalDepartureRunnable
+                )
+
+                service.app.lockEngine.onScreenOff()
+
                 service.removeProtectionOverlay()
+
                 service.disarmWatchdogIfIdle()
             }
         }
