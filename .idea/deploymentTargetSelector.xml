@@ -4,11 +4,11 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-09-20T07:42:02.581769200Z">
+        <DropdownSelection timestamp="2026-09-21T19:05:22.455295500Z">
           <Target type="DEFAULT_BOOT">
-            <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=ZD222FTGWQ" />
-            </handle>
+            <template>
+              <DeviceId pluginId="FirebaseDirectAccess" type="TEMPLATE" identifier="model_id=malmo/36" />
+            </template>
           </Target>
         </DropdownSelection>
         <DialogSelection />

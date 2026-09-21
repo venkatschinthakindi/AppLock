@@ -1413,10 +1413,47 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
                     /*
                      * Launcher/home is a confirmed departure.
+                     *
+                     * AUTHORITATIVE OVERRIDE: LockActivity's own self-report
+                     * (lockUiVisible, set via onLockActivityShown -- a direct
+                     * callback from the Activity itself, not an inference
+                     * from window enumeration) takes precedence over this
+                     * resolver when they disagree. Device logs proved
+                     * getWindows()/UsageStats can repeatedly report a
+                     * gesture-navigation launcher (observed: Motorola
+                     * QuickstepLauncher) as "primary" even while LockActivity
+                     * is genuinely, visibly on top -- some gesture-nav
+                     * launchers keep part of their own window reporting
+                     * active while fully backgrounded. Without this check,
+                     * this exact branch was the mechanism behind a confirmed
+                     * infinite re-challenge loop: 20+ freshly-recreated
+                     * challenges in three minutes, zero successful unlocks,
+                     * because this cancellation fired unconditionally on
+                     * every watchdog tick (as often as every 80ms) with no
+                     * delay and no way to distinguish a real departure from
+                     * launcher noise.
                      */
                     ForegroundPolicy.isLauncher(
                         primaryForPending
                     ) -> {
+
+                        if (current.lockUiVisible) {
+                            android.util.Log.d(
+                                "AppLockDiag",
+                                "watchdog SUPPRESSED launcher-departure " +
+                                    "cancellation: LockActivity self-reports " +
+                                    "visible for owner=${current.packageName} " +
+                                    "reqId=${current.requestId} -- trusted " +
+                                    "over window enumeration"
+                            )
+
+                            showProtectionOverlay(
+                                barrierPackage = current.packageName
+                            )
+
+                            armWatchdog()
+                            return
+                        }
 
                         android.util.Log.d(
                             "AppLockDiag",
@@ -1452,8 +1489,33 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
                     /*
                      * Real foreign application.
+                     *
+                     * Same authoritative override as above: a genuinely
+                     * different real app overriding a self-reported-visible
+                     * LockActivity is far less likely than launcher noise,
+                     * but the same window-enumeration unreliability applies,
+                     * so the same trust check guards this branch too.
                      */
                     else -> {
+
+                        if (current.lockUiVisible) {
+                            android.util.Log.d(
+                                "AppLockDiag",
+                                "watchdog SUPPRESSED app-departure " +
+                                    "cancellation: LockActivity self-reports " +
+                                    "visible for owner=${current.packageName} " +
+                                    "reqId=${current.requestId} -- trusted " +
+                                    "over window enumeration " +
+                                    "(reported foreground=$primaryForPending)"
+                            )
+
+                            showProtectionOverlay(
+                                barrierPackage = current.packageName
+                            )
+
+                            armWatchdog()
+                            return
+                        }
 
                         android.util.Log.d(
                             "AppLockDiag",
@@ -2800,6 +2862,17 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         const val PENDING_WATCHDOG_INTERVAL_MS =
             80L
 
+        /*
+         * Raised from 450ms: device logs proved the full sequence of
+         * [target app cold start -> LockActivity reaches onResume() ->
+         * self-reports via notifyLockActivityShown()] can exceed 450ms under
+         * real device load (a heavy app cold-starting competes for the same
+         * main-thread/CPU time LockActivity needs). The lockUiVisible trust
+         * checks added above only protect once that self-report has
+         * happened; before that point, this delay is the only thing giving
+         * a slow-starting challenge enough runway to stand up before being
+         * judged abandoned.
+         */
         const val DEPARTURE_CONFIRM_DELAY_MS =
             450L
 
