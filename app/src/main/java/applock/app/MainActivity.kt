@@ -21,10 +21,14 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_SHOW_DEVICE_ADMIN_EXPLANATION =
             "show_device_admin_explanation"
+
+        const val EXTRA_OPEN_PROTECTED_APPS =
+            "open_protected_apps"
     }
 
     private var showDeviceAdminExplanation by mutableStateOf(false)
     private var deviceAdminRequestLaunched = false
+    private var openProtectedApps by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +54,11 @@ class MainActivity : ComponentActivity() {
         }
 
         app.repository.refreshProtectionState()
+        openProtectedApps =
+            intent.getBooleanExtra(
+                EXTRA_OPEN_PROTECTED_APPS,
+                false
+            )
 
         showDeviceAdminExplanation =
             intent.getBooleanExtra(
@@ -77,7 +86,9 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 } else {
-                    AppLockRoot()
+                    AppLockRoot(
+                        openProtectedApps = openProtectedApps
+                    )
                 }
             }
         }
@@ -86,6 +97,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+
+        openProtectedApps =
+            intent.getBooleanExtra(
+                EXTRA_OPEN_PROTECTED_APPS,
+                false
+            )
 
         val app = application as AppLockApplication
         app.lockEngine.onAppLockVisible()

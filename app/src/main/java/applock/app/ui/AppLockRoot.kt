@@ -104,7 +104,9 @@ private fun AppLockIconPainter(): BitmapPainter {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppLockRoot() {
+fun AppLockRoot(
+    openProtectedApps: Boolean = false
+) {
 
     val context = LocalContext.current
 
@@ -121,8 +123,10 @@ fun AppLockRoot() {
     val scope =
         rememberCoroutineScope()
 
-    var destination by remember {
-        mutableStateOf("home")
+    var destination by remember(openProtectedApps) {
+        mutableStateOf(
+            if (openProtectedApps) "apps" else "home"
+        )
     }
 
     /*

@@ -346,16 +346,10 @@ class AppLockRepository(
      * end at a departure; explicit timed rules keep running as configured.
      */
     fun clearUnlocksForScreenOff() {
-        when (getSessionRule()) {
-            SessionRule.IMMEDIATELY,
-            SessionRule.AFTER_LEAVING,
-            SessionRule.SCREEN_OFF -> clearAllUnlocks()
-
-            SessionRule.MINUTES_1,
-            SessionRule.MINUTES_5,
-            SessionRule.MINUTES_15,
-            SessionRule.MINUTES_30 -> Unit
-        }
+        // Screen-off is a hard security boundary for AppLock. A timestamp
+        // created before the device was locked must never authorize a
+        // protected app after the device becomes interactive again.
+        clearAllUnlocks()
     }
 
     fun recentlyUnlockedAt(packageName: String): Long =

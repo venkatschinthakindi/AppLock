@@ -88,6 +88,7 @@ class AppLockApplication : Application() {
                         Intent.ACTION_SCREEN_ON,
                         Intent.ACTION_USER_PRESENT -> {
                             repository.refreshProtectionState()
+                            AppDetectionAccessibilityService.notifyScreenOn()
                         }
                     }
 

@@ -37,6 +37,7 @@ class LockActivity : FragmentActivity() {
     private var packageNameTarget by mutableStateOf("")
     private var requestId = 0L
     private var authenticationCompleted = false
+    private var lockUiReadyReported = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,34 +94,70 @@ class LockActivity : FragmentActivity() {
         observer.addOnPreDrawListener(
             object : ViewTreeObserver.OnPreDrawListener {
 
-                private var sent = false
-
                 override fun onPreDraw(): Boolean {
-
-                    if (!sent) {
-                        sent = true
-
-                        if (
-                            packageNameTarget.isNotBlank() &&
-                            requestId != 0L &&
-                            !isFinishing &&
-                            !isDestroyed
-                        ) {
-                            AppDetectionAccessibilityService.notifyLockActivityReady(
-                                packageNameTarget,
-                                requestId
-                            )
-                        }
-
-                        if (observer.isAlive) {
-                            observer.removeOnPreDrawListener(this)
-                        }
+                    // Drawing is NOT proof that this Activity is actually
+                    // the foreground/top window. On several OEM builds the
+                    // protected app can receive a window-state event between
+                    // our first draw and the Activity gaining focus. The
+                    // service-side barrier must remain in place until the
+                    // Activity reports real window focus.
+                    if (observer.isAlive) {
+                        observer.removeOnPreDrawListener(this)
                     }
-
                     return true
                 }
             }
         )
+    }
+
+    /**
+     * One-shot ready handshake for the exact authentication Activity/request.
+     * Window focus is the security gate. A pre-draw callback is intentionally
+     * not accepted as READY because drawing does not prove that this Activity
+     * is the top/focused window.
+     */
+    private fun reportLockUiReady(source: String) {
+        if (lockUiReadyReported) return
+        if (packageNameTarget.isBlank() || requestId == 0L) return
+        if (isFinishing || isDestroyed) return
+
+        val app = application as AppLockApplication
+        if (!app.lockEngine.isRequestActive(packageNameTarget, requestId)) return
+
+        lockUiReadyReported = true
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "LockActivity report READY source=$source " +
+                "pkg=$packageNameTarget requestId=$requestId"
+        )
+
+        AppDetectionAccessibilityService.notifyLockActivityReady(
+            packageNameTarget,
+            requestId
+        )
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+
+        if (hasFocus) {
+            // Window focus, unlike pre-draw, proves that this Activity is the
+            // currently focused security UI. Keep the native barrier until
+            // this point.
+            window.decorView.postOnAnimation {
+                reportLockUiReady("windowFocus")
+            }
+        } else {
+            // Focus loss is NOT authentication and is also NOT proof that the
+            // protected app is back in the foreground. It can happen for
+            // biometric/system UI transitions. The accessibility service owns
+            // the actual foreground decision and will reinstall the privacy
+            // barrier only if the protected app is really exposed.
+            //
+            // Do not turn every focus loss into a white barrier: the barrier
+            // is visual transition protection, not the authentication state.
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -130,6 +167,7 @@ class LockActivity : FragmentActivity() {
         if (authenticationCompleted) return
 
         if (bindRequest(intent)) {
+            lockUiReadyReported = false
             installLockUiReadyHandshake()
         }
     }
@@ -159,39 +197,10 @@ class LockActivity : FragmentActivity() {
     }
 
     private fun installLockUiReadyHandshake() {
-        val decor = window.decorView
-        val observer = decor.viewTreeObserver
-
-        observer.addOnPreDrawListener(
-            object : ViewTreeObserver.OnPreDrawListener {
-
-                private var sent = false
-
-                override fun onPreDraw(): Boolean {
-                    if (!sent) {
-                        sent = true
-
-                        if (
-                            packageNameTarget.isNotBlank() &&
-                            requestId != 0L &&
-                            !isFinishing &&
-                            !isDestroyed
-                        ) {
-                            AppDetectionAccessibilityService.notifyLockActivityReady(
-                                packageNameTarget,
-                                requestId
-                            )
-                        }
-
-                        if (observer.isAlive) {
-                            observer.removeOnPreDrawListener(this)
-                        }
-                    }
-
-                    return true
-                }
-            }
-        )
+        // Intentionally no pre-draw -> READY transition here. A pre-drawn
+        // Activity can still be behind the protected application on some
+        // Android/OEM task transitions. Window focus is the minimum signal we
+        // accept for releasing the fail-closed barrier.
     }
 
     override fun onResume() {
@@ -201,10 +210,13 @@ class LockActivity : FragmentActivity() {
         val app = application as AppLockApplication
         // Only ever act on our own request. If it is gone, this instance is
         // stale: disappear quietly without touching newer security state.
-        if (!isValidTarget(app, packageNameTarget) ||
-            (!app.lockEngine.isRequestActive(packageNameTarget, requestId) &&
-                !app.lockEngine.isAuthorizedForLaunch(packageNameTarget))
+        if (
+            !isValidTarget(app, packageNameTarget) ||
+            !app.lockEngine.isRequestActive(packageNameTarget, requestId)
         ) {
+            // A LockActivity exists only for a live authentication request.
+            // An authorized package is not a reason for a stale lock Activity
+            // to remain on screen after its request has completed.
             finishAndRemoveTask()
             return
         }
@@ -214,32 +226,28 @@ class LockActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
 
-        /*
-         * Do NOT cancel the live authentication request from onStop().
-         *
-         * Android legitimately stops an Activity while the user is still
-         * in the same authentication transition: launcher/Recents/SystemUI
-         * can briefly become the reported foreground window, and biometric
-         * or other system surfaces can temporarily cover the lock screen.
-         *
-         * Finishing here was the direct source of the observed flicker:
-         * LockActivity -> launcher/SystemUI -> onStop() -> cancel request ->
-         * service creates a new request -> LockActivity is launched again.
-         *
-         * The requestId remains the source of truth. Genuine hard boundaries
-         * are handled by the service/LockEngine (AppLock main UI, real app
-         * transition, and screen-off), while a stale Activity instance can
-         * only cancel its own exact request in onDestroy().
-         */
+        // onStop() is not authentication and must never cancel the request.
+        // It is also not proof that the protected app is visible: biometric
+        // prompts and other system-owned surfaces can stop/focus-shift this
+        // Activity temporarily. The service watchdog reconciles the actual
+        // foreground package and decides whether a privacy barrier is needed.
     }
 
     override fun onDestroy() {
         if (!authenticationCompleted) {
-            val app = application as AppLockApplication
-
+            /*
+             * Activity destruction is a lifecycle event, not proof that the
+             * user left the protected app and not proof of authentication.
+             * Never cancel the engine transaction here. Otherwise Android can
+             * destroy this Activity during task/Recents/SystemUI transitions,
+             * the request disappears, the barrier is removed, and the
+             * protected app can become visible without a challenge.
+             *
+             * The service owns the transaction. This callback only tells it
+             * that this exact Activity instance is no longer visible, so the
+             * watchdog can keep the barrier up and relaunch the same request.
+             */
             if (packageNameTarget.isNotBlank() && requestId != 0L) {
-                app.lockEngine.cancelRequest(packageNameTarget, requestId)
-
                 AppDetectionAccessibilityService.notifyLockActivityDismissed(
                     packageNameTarget,
                     requestId

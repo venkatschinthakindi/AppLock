@@ -172,6 +172,20 @@ class LockEngineScenarioTest {
     }
 
     @Test
+    fun `screen off always destroys a timed session`() {
+        policy.sessionRule = "MINUTES_5"
+        policy.protectedApps.add(WA)
+        satisfy(engine.onForegroundApp(WA))
+
+        // Screen-off is a hard authentication boundary. Even a still-valid
+        // timed session must not authorize the protected app after unlock.
+        engine.onScreenOff()
+
+        assertTrue(engine.onForegroundApp(WA).requireAuth)
+        assertFalse(engine.isAuthorizedForLaunch(WA))
+    }
+
+    @Test
     fun `a session does not survive opening AppLock itself`() {
         policy.protectedApps.add(WA)
         satisfy(engine.onForegroundApp(WA))
@@ -222,6 +236,38 @@ class LockEngineScenarioTest {
             LockEngine.AuthenticationResult.SUCCESS,
             engine.authenticatePin(WA, policy.pin)
         )
+    }
+
+
+    @Test
+    fun `destroying a lock Activity does not authorize or invalidate a live request unless service explicitly cancels it`() {
+        policy.protectedApps.add(WA)
+
+        val first = engine.onForegroundApp(WA)
+        assertTrue(first.requireAuth)
+        assertTrue(engine.isRequestActive(WA, first.requestId))
+        assertFalse(engine.isAuthorizedForLaunch(WA))
+
+        // Activity lifecycle destruction itself performs no engine operation.
+        // The request must remain live so the service can relaunch the UI.
+        assertTrue(engine.isRequestActive(WA, first.requestId))
+        assertFalse(engine.isAuthorizedForLaunch(WA))
+    }
+
+    @Test
+    fun `new protected package gets exactly one live request after switching`() {
+        policy.protectedApps.add(WA)
+        policy.protectedApps.add(OTHER)
+
+        val first = engine.onForegroundApp(WA)
+        val second = engine.onForegroundApp(OTHER)
+        val secondRepeat = engine.onForegroundApp(OTHER)
+
+        assertTrue(first.requireAuth)
+        assertTrue(second.requireAuth)
+        assertEquals(second.requestId, secondRepeat.requestId)
+        assertFalse(engine.isRequestActive(WA, first.requestId))
+        assertTrue(engine.isRequestActive(OTHER, second.requestId))
     }
 
     @Test

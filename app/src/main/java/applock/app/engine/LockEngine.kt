@@ -13,8 +13,9 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 1. FAIL CLOSED. Any state we are not sure about resolves to "challenge".
  * 2. A session (authorisation) is bound to one package and is destroyed by
- *    ANY user-visible departure: launcher, recents, another app, screen off,
- *    AppLock itself, or a protection/credential configuration change.
+ *    a real user-visible departure (launcher, recents, another app), AppLock
+ *    itself, or a protection/credential configuration change. Screen-off is
+ *    handled separately according to the configured session rule.
  * 3. A session is NOT destroyed by surfaces the user cannot "leave" through
  *    (our own lock UI, the IME, permission/share/system dialogs). Those park
  *    the session instead, so the user is never re-challenged mid-use.
@@ -142,9 +143,31 @@ class LockEngine(
         if (_state.value != State.TEMPORARILY_BLOCKED) _state.value = State.IDLE
     }
 
-    /** Screen off / device locked: hardest possible boundary. */
+    /**
+     * Screen off / device locked.
+     *
+     * Screen-off is a security boundary, but the configured session rule still
+     * owns the lifetime of an already authenticated session.  In particular,
+     * timed sessions must not be converted into an unconditional logout just
+     * because the display went dark.  A live authentication request is always
+     * invalidated: an interrupted challenge must restart after unlock.
+     *
+     * The persisted unlock timestamp remains the recovery source if Android
+     * recreates this process while the device is locked.
+     */
     @Synchronized
-    fun onScreenOff() = onUserLeftForeground()
+    fun onScreenOff() {
+        // Screen-off/device lock is a hard authentication boundary.
+        // NEVER carry an authenticated foreground session or an in-flight
+        // request across it. The next protected-app foreground observation
+        // must create a fresh authentication transaction.
+        clearSessionLocked()
+        invalidateRequestLocked()
+        foregroundPackage = null
+        if (_state.value != State.TEMPORARILY_BLOCKED) {
+            _state.value = State.IDLE
+        }
+    }
 
     /** AppLock's own dashboard is an explicit boundary. */
     @Synchronized
