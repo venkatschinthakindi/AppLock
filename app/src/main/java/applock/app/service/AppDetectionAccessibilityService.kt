@@ -2310,23 +2310,46 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             }
 
         val title =
-            TextView(this).apply {
-                text = "Atoolix"
+    TextView(this).apply {
+        text = "Atoolix"
 
-                textSize = 24f
+        textSize = 24f
 
-                setTextColor(
-                    Color.BLACK
-                )
+        setTextColor(
+            Color.BLACK
+        )
 
-                gravity =
-                    Gravity.CENTER
+        gravity =
+            Gravity.CENTER
 
-                setTypeface(
-                    typeface,
-                    android.graphics.Typeface.BOLD
-                )
+        setTypeface(
+            typeface,
+            android.graphics.Typeface.BOLD
+        )
+    }
+
+val domain =
+    TextView(this).apply {
+        text = "atoolix.com"
+
+        textSize = 14f
+
+        setTextColor(
+            Color.DKGRAY
+        )
+
+        gravity =
+            Gravity.CENTER
+
+        layoutParams =
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin =
+                    dp(2)
             }
+    }
 
         val message =
             TextView(this).apply {
@@ -2377,6 +2400,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         content.addView(logo)
         content.addView(sponsor)
         content.addView(title)
+        content.addView(domain)
         content.addView(message)
         content.addView(continueButton)
 
