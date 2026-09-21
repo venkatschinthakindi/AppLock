@@ -32,7 +32,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
 import applock.app.data.LaunchableAppCatalog
-import applock.app.service.AppDetectionAccessibilityService
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
@@ -160,12 +159,10 @@ private fun ProtectedAppsEditor() {
                             checked = item.protected,
                             onCheckedChange = { enabled ->
                                 app.repository.setProtected(item.packageName, enabled)
-                                // Protection-list changes take effect immediately.
-                                // The service refreshes its snapshot and reconciles
-                                // the actual foreground package without waiting for
-                                // the periodic refresh tick.
+                                // Protection-list changes are security-state
+                                // boundaries. Do not let an old foreground
+                                // authorization survive a settings change.
                                 app.lockEngine.resetTransitionState()
-                                AppDetectionAccessibilityService.notifyProtectionConfigChanged()
                                 refreshApps()
                             }
                         )
