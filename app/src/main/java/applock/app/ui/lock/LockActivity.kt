@@ -28,6 +28,14 @@ class LockActivity : FragmentActivity() {
     private var authenticationCompleted = false
 
     /**
+     * True while Android's system BiometricPrompt owns the foreground.
+     * Showing BiometricPrompt can move this Activity through onStop/onDestroy
+     * on some devices. That lifecycle transition is NOT an authentication
+     * cancellation and must not invalidate the active lock request.
+     */
+    private var biometricPromptActive = false
+
+    /**
      * READY is one-shot for this Activity/request.
      */
     private var lockUiReadyReported = false
@@ -393,16 +401,115 @@ class LockActivity : FragmentActivity() {
     }
 
     // ---------------------------------------------------------------------
+    // BIOMETRIC PROMPT LIFECYCLE
+    // ---------------------------------------------------------------------
+
+    fun setBiometricPromptActive(active: Boolean) {
+        biometricPromptActive = active
+
+        val state =
+            if (active) {
+                "STARTED"
+            } else {
+                "IDLE"
+            }
+
+        AppDetectionAccessibilityService.notifyBiometricPromptState(
+            packageNameTarget,
+            requestId,
+            state
+        )
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "LockActivity biometricPromptActive=$active pkg=$packageNameTarget requestId=$requestId state=$state"
+        )
+    }
+
+    /**
+     * Request-bound biometric lifecycle notification. The service owns the
+     * foreground authentication transaction, so it must hear about success
+     * before the Activity releases the biometric guard.
+     */
+    fun notifyBiometricPromptState(state: String) {
+        AppDetectionAccessibilityService.notifyBiometricPromptState(
+            packageNameTarget,
+            requestId,
+            state
+        )
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "LockActivity biometricPrompt state=$state pkg=$packageNameTarget requestId=$requestId"
+        )
+    }
+
+    /**
+     * BiometricPrompt can outlive/destroy this Activity on some OEM builds.
+     * The Accessibility service is the transaction owner, so biometric success
+     * uses the service-owned launch bridge instead of depending on Activity
+     * liveness.
+     */
+    fun completeBiometricAuthenticationHandoff(): Boolean {
+        return AppDetectionAccessibilityService
+            .completeBiometricAuthenticationHandoff(
+                packageNameTarget,
+                requestId
+            )
+    }
+
+    /**
+     * Last-resort compatibility path for devices where the service instance
+     * is temporarily unavailable but the Activity is still alive.
+     */
+    fun completeAuthenticationFromBiometricFallback(
+        targetPackage: String
+    ): Boolean {
+        if (isFinishing || isDestroyed) {
+            return false
+        }
+
+        completeAuthentication(targetPackage)
+        return authenticationCompleted
+    }
+
+    // ---------------------------------------------------------------------
     // LIFECYCLE DISMISSAL
     // ---------------------------------------------------------------------
 
     override fun onStop() {
         super.onStop()
 
+        // BiometricPrompt temporarily owns the foreground. Do not treat its
+        // lifecycle transition as dismissal of the protected-app lock UI.
+        if (biometricPromptActive) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "LockActivity onStop ignored while BiometricPrompt active " +
+                    "pkg=$packageNameTarget requestId=$requestId"
+            )
+            return
+        }
+
         reportLockUiDismissedOnce()
     }
 
     override fun onDestroy() {
+
+        /*
+         * BiometricPrompt may cause a transient lifecycle transition on some
+         * Android versions. If the prompt is active, the authentication
+         * transaction is still alive and must not be dismissed here.
+         */
+        if (biometricPromptActive) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "LockActivity onDestroy ignored while BiometricPrompt active " +
+                    "pkg=$packageNameTarget requestId=$requestId"
+            )
+            super.onDestroy()
+            return
+        }
 
         /*
          * This is only an unexpected/lifecycle disappearance.
@@ -460,14 +567,30 @@ class LockActivity : FragmentActivity() {
         }
 
         /*
-         * The exact authentication request must still be alive.
+         * IMPORTANT:
+         *
+         * PIN/Pattern/Biometric authentication completes the LockEngine
+         * transaction first. LockEngine intentionally invalidates the active
+         * request at that point, while preserving the exact one-shot
+         * launch authorization.
+         *
+         * Therefore the post-authentication hand-off must NOT require
+         * isRequestActive() here. The authoritative proof of successful
+         * authentication is the exact package + requestId launch
+         * authorization created by LockEngine.
          */
         if (
-            !app.lockEngine.isRequestActive(
+            !app.lockEngine.hasLaunchAuthorization(
                 targetPackage,
                 requestId
             )
         ) {
+            android.util.Log.w(
+                "AppLockDiag",
+                "Launch rejected: missing exact post-auth authorization " +
+                    "pkg=$targetPackage requestId=$requestId"
+            )
+
             finishAndRemoveTask()
             return
         }

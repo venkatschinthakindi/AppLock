@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
 import applock.app.data.LaunchableAppCatalog
+import applock.app.service.AppDetectionAccessibilityService
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
@@ -163,6 +164,7 @@ private fun ProtectedAppsEditor() {
                                 // boundaries. Do not let an old foreground
                                 // authorization survive a settings change.
                                 app.lockEngine.resetTransitionState()
+                                AppDetectionAccessibilityService.notifySecurityConfigurationChanged()
                                 refreshApps()
                             }
                         )

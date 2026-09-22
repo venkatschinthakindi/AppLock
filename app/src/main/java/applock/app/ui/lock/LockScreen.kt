@@ -161,6 +161,12 @@ fun LockScreen(
 
         val executor = ContextCompat.getMainExecutor(context)
 
+        // BiometricPrompt can temporarily stop LockActivity. Tell both the
+        // Activity and the accessibility service that this exact request has
+        // entered the biometric hand-off.
+        (activity as? LockActivity)?.setBiometricPromptActive(true)
+        (activity as? LockActivity)?.notifyBiometricPromptState("IN_PROGRESS")
+
         BiometricPrompt(
             activity,
             executor,
@@ -168,15 +174,64 @@ fun LockScreen(
                 override fun onAuthenticationSucceeded(
                     result: BiometricPrompt.AuthenticationResult
                 ) {
-                    showResult(
+                    // IMPORTANT: complete the request and create the exact
+                    // one-shot launch authorization BEFORE releasing the
+                    // service's biometric-departure guard.
+                    val lockActivity = activity as? LockActivity
+                    lockActivity?.notifyBiometricPromptState("SUCCEEDED")
+
+                    val result =
                         app.lockEngine.completeBiometricAuthentication(packageName)
-                    )
+
+                    if (result == LockEngine.AuthenticationResult.SUCCESS) {
+                        // Do not route biometric success back through the
+                        // Activity as the primary hand-off. On some Android/OEM
+                        // builds BiometricPrompt can move/destroy LockActivity
+                        // before this callback returns. The Accessibility
+                        // service is already the owner of the protected-app
+                        // foreground transaction, so it performs the exact
+                        // package+request launch hand-off.
+                        val handedOff =
+                            lockActivity?.completeBiometricAuthenticationHandoff() == true
+
+                        if (!handedOff) {
+                            android.util.Log.w(
+                                "AppLockDiag",
+                                "Biometric handoff service did not accept " +
+                                    "pkg=$packageName; using Activity fallback"
+                            )
+                            lockActivity?.completeAuthenticationFromBiometricFallback(
+                                packageName
+                            )
+                        }
+                    } else {
+                        showResult(result)
+                    }
+
+                    // The service clears its request-bound biometric state
+                    // after accepting the launch hand-off. For failure/fallback
+                    // paths the Activity must release it here.
+                    if (result != LockEngine.AuthenticationResult.SUCCESS) {
+                        lockActivity?.setBiometricPromptActive(false)
+                    }
                 }
 
                 override fun onAuthenticationError(
                     errorCode: Int,
                     errString: CharSequence
                 ) {
+                    val state =
+                        if (errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                        ) {
+                            "CANCELLED"
+                        } else {
+                            "FAILED"
+                        }
+
+                    (activity as? LockActivity)?.notifyBiometricPromptState(state)
+                    (activity as? LockActivity)?.setBiometricPromptActive(false)
+
                     if (
                         errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
                     ) {

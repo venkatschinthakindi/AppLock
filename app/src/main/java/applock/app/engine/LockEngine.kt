@@ -567,6 +567,13 @@ class LockEngine(
         packageName: String
     ): AuthenticationResult {
 
+        android.util.Log.d(
+            "AppLockDiag",
+            "completeBiometricAuthentication START pkg=$packageName " +
+                "activeReqId=$activeRequestId active=${isAuthenticationRequestActive(packageName)} " +
+                "method=${repository.getAuthMethod()}"
+        )
+
         if (isBlocked()) {
             _state.value =
                 State.TEMPORARILY_BLOCKED
@@ -627,6 +634,12 @@ class LockEngine(
         val authenticatedRequestId =
             activeRequestId
 
+        android.util.Log.d(
+            "AppLockDiag",
+            "completeCredentialAuthentication AUTHORIZING pkg=$packageName " +
+                "requestId=$authenticatedRequestId"
+        )
+
         if (authenticatedRequestId == 0L) {
             return invalidContext()
         }
@@ -650,6 +663,12 @@ class LockEngine(
                 packageName = packageName,
                 requestId = authenticatedRequestId
             )
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "completeCredentialAuthentication LAUNCH_AUTH_CREATED " +
+                "pkg=$packageName requestId=$authenticatedRequestId"
+        )
 
         /*
          * The authentication request itself is now complete.

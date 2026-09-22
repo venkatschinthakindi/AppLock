@@ -1,12 +1,11 @@
 package applock.app.ui.screens
+
+import androidx.biometric.BiometricManager
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 
-import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
@@ -57,11 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
 import applock.app.data.AppLockRepository
 import applock.app.domain.AuthMethod
+import applock.app.service.AppDetectionAccessibilityService
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
@@ -80,6 +78,7 @@ fun SecuritySetupScreen() {
     var gatePin by remember { mutableStateOf("") }
     var gateError by remember { mutableStateOf("") }
     var gatePattern by remember { mutableStateOf(emptyList<Int>()) }
+    var pendingMethod by remember { mutableStateOf<AuthMethod?>(null) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -111,20 +110,6 @@ fun SecuritySetupScreen() {
 
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(alreadyConfigured, currentMethod) {
-        if (
-            alreadyConfigured &&
-            currentMethod == AuthMethod.BIOMETRIC &&
-            !usingPinFallback
-        ) {
-            launchBiometricGate(
-                context = context,
-                onSuccess = { authorized = true },
-                onFallback = { usingPinFallback = true }
-            )
-        }
     }
 
     if (!authorized) {
@@ -170,18 +155,54 @@ fun SecuritySetupScreen() {
                 gatePin = ""
                 gateError = ""
 
-                launchBiometricGate(
-                    context,
-                    { authorized = true },
-                    { usingPinFallback = true }
+                launchHostBiometric(
+                    context = context,
+                    title = "Verify device biometric",
+                    subtitle = "Use your fingerprint or face to unlock Security settings.",
+                    negativeButtonText = "Use PIN",
+                    onSuccess = { authorized = true },
+                    onError = { reason ->
+                        usingPinFallback = true
+                        gateError = reason
+                    }
                 )
+            },
+            onUsePinFallback = {
+                usingPinFallback = true
+                gateError = ""
             }
         )
 
         return
     }
 
-    AuthenticationEditor(repo)
+    AuthenticationEditor(
+        repo = repo,
+        initialMethod = pendingMethod ?: repo.getAuthMethod(),
+        onRequestReauthentication = { target ->
+            pendingMethod = target
+            authorized = false
+            usingPinFallback = false
+            gatePin = ""
+            gatePattern = emptyList()
+            gateError = ""
+        },
+        onAuthenticationMethodApplied = {
+            // Changing authentication is a security boundary. Never carry an
+            // old AppLock session/unlock into the newly configured method.
+            repo.clearAllUnlocks()
+            app.lockEngine.resetTransitionState()
+            AppDetectionAccessibilityService.notifySecurityConfigurationChanged()
+            pendingMethod = null
+            currentMethod = repo.getAuthMethod()
+            alreadyConfigured = repo.authenticationConfigured()
+            authorized = true
+            usingPinFallback = false
+            gatePin = ""
+            gatePattern = emptyList()
+            gateError = ""
+        }
+    )
 }
 
 @Composable
@@ -195,7 +216,8 @@ private fun SecurityGateContent(
     onPinChange: (String) -> Unit,
     onUnlock: () -> Unit,
     onPatternChange: (List<Int>) -> Unit,
-    onUseBiometric: () -> Unit
+    onUseBiometric: () -> Unit,
+    onUsePinFallback: () -> Unit
 ) {
     val scrollState = rememberScrollState()
 
@@ -309,6 +331,67 @@ private fun SecurityGateContent(
                         }
                     }
 
+                    currentMethod == AuthMethod.BIOMETRIC -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                    RoundedCornerShape(22.dp)
+                                )
+                                .padding(20.dp)
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Fingerprint,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                    Spacer(Modifier.size(12.dp))
+                                    Text(
+                                        "Verify your device biometric",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Text(
+                                    "Use your fingerprint or face to confirm access before changing the authentication method. Android will show the secure biometric prompt.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Button(
+                                    onClick = onUseBiometric,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(54.dp),
+                                    shape = RoundedCornerShape(18.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Fingerprint,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.size(8.dp))
+                                    Text("Verify with biometric")
+                                }
+
+                                if (repo.hasPin()) {
+                                    TextButton(
+                                        onClick = onUsePinFallback,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Use fallback PIN instead")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     currentMethod == AuthMethod.PATTERN -> {
                         Text(
                             "Draw your existing pattern",
@@ -338,9 +421,12 @@ private fun SecurityGateContent(
 
 @Composable
 private fun AuthenticationEditor(
-    repo: AppLockRepository
+    repo: AppLockRepository,
+    initialMethod: AuthMethod,
+    onRequestReauthentication: (AuthMethod) -> Unit,
+    onAuthenticationMethodApplied: () -> Unit
 ) {
-    var method by remember { mutableStateOf(repo.getAuthMethod()) }
+    var method by remember { mutableStateOf(initialMethod) }
     var pin by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var pattern by remember { mutableStateOf(emptyList<Int>()) }
@@ -434,8 +520,13 @@ private fun AuthenticationEditor(
                 FilterChip(
                     selected = method == option,
                     onClick = {
-                        method = option
-                        message = ""
+                        if (option == repo.getAuthMethod() || !repo.authenticationConfigured()) {
+                            method = option
+                            message = ""
+                        } else if (option != method) {
+                            message = "Authenticate with your current ${repo.getAuthMethod().displayName()} to change to ${option.displayName()}."
+                            onRequestReauthentication(option)
+                        }
                     },
                     label = {
                         Text(option.displayName())
@@ -536,6 +627,7 @@ private fun AuthenticationEditor(
                                 pin = ""
                                 confirm = ""
                                 message = "PIN updated securely"
+                                onAuthenticationMethodApplied()
                             },
                             enabled =
                                 pin.length in 4..8 &&
@@ -629,6 +721,7 @@ private fun AuthenticationEditor(
                                             patternConfirm = emptyList()
                                             message =
                                                 "Pattern updated securely"
+                                            onAuthenticationMethodApplied()
                                         } else {
                                             patternConfirm = emptyList()
                                             message =
@@ -676,14 +769,13 @@ private fun AuthenticationEditor(
 
                         Text(
                             if (biometricReady) {
-                                "Your device reports biometric authentication is ready. " +
-                                    "A PIN fallback is required for reliable recovery."
+                                "Use the biometric already enrolled on this device. " +
+                                    "A fallback PIN keeps you covered when biometric unlock is unavailable."
                             } else {
-                                "Biometric authentication is not currently ready. " +
-                                    "Set a PIN fallback first."
+                                "Device biometric is not ready yet. Enroll a fingerprint or face in Android Settings, then return here."
                             },
-                            color =
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge
                         )
 
                         if (!repo.hasPin()) {
@@ -734,28 +826,73 @@ private fun AuthenticationEditor(
                             )
                         }
 
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(
+                                Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    "STEP 2  •  VERIFY DEVICE BIOMETRIC",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "Your phone will now show Android's secure fingerprint or face prompt.",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Nothing is enabled until that system verification succeeds. We never collect or store your biometric data.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
                         Button(
                             onClick = {
-                                if (
-                                    !repo.hasPin() &&
-                                    pin.length in 4..8 &&
-                                    pin == confirm
-                                ) {
-                                    repo.setPin(pin)
-                                    pin = ""
-                                    confirm = ""
+                                val fallbackPin =
+                                    if (repo.hasPin()) {
+                                        null
+                                    } else {
+                                        if (pin.length !in 4..8 || pin != confirm) {
+                                            message = "Create and confirm a 4–8 digit fallback PIN first."
+                                            return@Button
+                                        }
+                                        pin
+                                    }
+
+                                if (!biometricReady) {
+                                    message = "Device biometric is not available. Enroll a fingerprint or face in Android Settings, then return here."
+                                    return@Button
                                 }
 
-                                if (
-                                    repo.hasPin() &&
-                                    biometricReady
-                                ) {
-                                    repo.setAuthMethod(
-                                        AuthMethod.BIOMETRIC
-                                    )
-                                    message =
-                                        "Biometric unlock enabled"
-                                }
+                                message = "Waiting for device biometric verification…"
+                                launchHostBiometric(
+                                    context = context,
+                                    title = "Enable biometric unlock",
+                                    subtitle = "Verify your fingerprint or face to enable biometric unlock.",
+                                    negativeButtonText = "Cancel",
+                                    onSuccess = {
+                                        if (fallbackPin != null) {
+                                            repo.setPin(fallbackPin)
+                                        }
+                                        repo.setAuthMethod(AuthMethod.BIOMETRIC)
+                                        pin = ""
+                                        confirm = ""
+                                        message = "Biometric unlock enabled. Your device biometric is now the primary unlock; PIN remains the fallback."
+                                        onAuthenticationMethodApplied()
+                                    },
+                                    onError = { reason ->
+                                        message = reason
+                                    }
+                                )
                             },
                             enabled =
                                 biometricReady &&
@@ -771,7 +908,13 @@ private fun AuthenticationEditor(
                                 .height(52.dp),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Text("Enable biometric unlock")
+                            Icon(
+                                Icons.Default.Fingerprint,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Text("Verify & enable biometric")
                         }
                     }
                 }
@@ -790,55 +933,26 @@ private fun AuthenticationEditor(
     }
 }
 
-private fun launchBiometricGate(
-    context: Context,
+private fun launchHostBiometric(
+    context: android.content.Context,
+    title: String,
+    subtitle: String,
+    negativeButtonText: String,
     onSuccess: () -> Unit,
-    onFallback: () -> Unit
+    onError: (String) -> Unit
 ) {
-    val activity =
-        context as? FragmentActivity ?: run {
-            onFallback()
-            return
-        }
-
-    val ready =
-        BiometricManager.from(context).canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.BIOMETRIC_WEAK
-        ) == BiometricManager.BIOMETRIC_SUCCESS
-
-    if (!ready) {
-        onFallback()
+    val activity = context as? applock.app.MainActivity
+    if (activity == null) {
+        onError("Biometric verification could not start from the current screen. No authentication setting was changed.")
         return
     }
 
-    val executor =
-        ContextCompat.getMainExecutor(context)
-
-    BiometricPrompt(
-        activity,
-        executor,
-        object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(
-                result: BiometricPrompt.AuthenticationResult
-            ) {
-                onSuccess()
-            }
-
-            override fun onAuthenticationError(
-                errorCode: Int,
-                errString: CharSequence
-            ) {
-                onFallback()
-            }
-        }
-    ).authenticate(
-        BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Verify to change security settings")
-            .setSubtitle("Confirm your existing biometric")
-            .setNegativeButtonText("Use PIN")
-            .setConfirmationRequired(false)
-            .build()
+    activity.launchDeviceBiometric(
+        title = title,
+        subtitle = subtitle,
+        negativeButtonText = negativeButtonText,
+        onSuccess = onSuccess,
+        onError = onError
     )
 }
 

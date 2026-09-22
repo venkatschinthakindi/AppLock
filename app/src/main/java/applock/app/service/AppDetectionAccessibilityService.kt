@@ -93,12 +93,37 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     @Volatile
     private var pending: PendingLock? = null
 
+    /**
+     * Exact biometric-prompt owner.  The system BiometricPrompt can move the
+     * lock Activity through SystemUI/launcher lifecycle surfaces while the
+     * authentication transaction is still valid.  The accessibility service
+     * therefore tracks the prompt independently from Activity lifecycle.
+     */
+    private enum class BiometricPromptState {
+        IDLE,
+        STARTED,
+        IN_PROGRESS,
+        SUCCEEDED,
+        FAILED,
+        CANCELLED
+    }
+
+    @Volatile
+    private var biometricPromptState = BiometricPromptState.IDLE
+
+    @Volatile
+    private var biometricPromptPackage: String? = null
+
+    @Volatile
+    private var biometricPromptRequestId: Long = 0L
+
     private var lastForegroundPackage: String? = null
 
     private var managementAuthorizedUntilElapsed = 0L
 
-    /** True while a no-protected-app configuration redirect is being launched. */
+    /** Prevents repeatedly launching AppLock while protected-app setup is empty. */
     private var configurationRedirectInProgress = false
+    private var configurationRedirectConsumedForEmptyState = false
 
     private var protectionOverlay: View? = null
 
@@ -647,9 +672,31 @@ class AppDetectionAccessibilityService : AccessibilityService() {
      */
     private fun refreshProtectedPackageSnapshot() {
         runCatching {
+            val previousSnapshot = protectedPackageSnapshot
+
             protectedPackageSnapshot =
                 app.repository.protectedPackages().toSet()
             protectionSnapshotInitialized = true
+
+            // A newly protected app must never inherit an unlock timestamp
+            // from an earlier period when it was not protected. This is
+            // especially important immediately after first-time setup:
+            // opening the app for the first time must create a fresh auth
+            // request and show the configured authentication method.
+            val newlyProtected =
+                protectedPackageSnapshot - previousSnapshot
+
+            newlyProtected.forEach { pkg ->
+                app.repository.clearUnlock(pkg)
+                app.lockEngine.cancelAuthenticationForPackage(pkg)
+            }
+
+            // A real protected-app configuration starts a new setup episode.
+            // The one-time redirect can therefore be armed again only after
+            // the user has actually selected at least one protected app.
+            if (protectedPackageSnapshot.isNotEmpty()) {
+                configurationRedirectConsumedForEmptyState = false
+            }
         }.onFailure {
             protectionSnapshotInitialized = false
             android.util.Log.w(
@@ -681,6 +728,24 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         evaluateCurrentForegroundAfterServiceRecovery()
     }
 
+    private fun onSecurityConfigurationChanged() {
+        configurationRedirectInProgress = false
+
+        runCatching {
+            app.repository.refreshProtectionState()
+            refreshProtectedPackageSnapshot()
+        }.onFailure {
+            android.util.Log.w(
+                "AppLockDiag",
+                "immediate security configuration refresh failed",
+                it
+            )
+        }
+
+        app.lockEngine.resetTransitionState()
+        armWatchdog()
+    }
+
     // --------------------------------------------------------- configuration redirect
 
     /**
@@ -690,11 +755,15 @@ class AppDetectionAccessibilityService : AccessibilityService() {
      * enforcement service.
      */
     private fun redirectToProtectedAppsConfiguration() {
-        if (configurationRedirectInProgress) {
+        // Redirect exactly once for the current empty protected-app state.
+        // Accessibility can emit many window events while MainActivity is
+        // opening; none of those should relaunch/flash the AppLock screen.
+        if (configurationRedirectInProgress || configurationRedirectConsumedForEmptyState) {
             return
         }
 
         configurationRedirectInProgress = true
+        configurationRedirectConsumedForEmptyState = true
 
         clearPending()
         provisionalDeparturePackage = null
@@ -725,6 +794,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             )
         }.onFailure {
             configurationRedirectInProgress = false
+            configurationRedirectConsumedForEmptyState = false
 
             android.util.Log.w(
                 "AppLockDiag",
@@ -899,7 +969,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 val securityRequest = pending
 
                 if (securityRequest != null) {
-                    if (securityRequest.lockUiReady) {
+                    if (securityRequest.lockUiVisible) {
+                        // Never overlay an existing LockActivity.
                         removeProtectionOverlay()
                     } else {
                         showProtectionOverlay(
@@ -953,6 +1024,33 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             currentOwner != pkg &&
             pkg != packageName
         ) {
+            val active = pending
+            if (
+                active != null &&
+                isBiometricPromptActiveFor(
+                    active.packageName,
+                    active.requestId
+                )
+            ) {
+                scheduleProvisionalDepartureConfirmation(
+                    active.packageName
+                )
+
+                showProtectionOverlay(
+                    barrierPackage = active.packageName
+                )
+
+                android.util.Log.d(
+                    "AppLockDiag",
+                    "cross-package transition ignored during biometric " +
+                        "owner=${active.packageName} requestId=${active.requestId} " +
+                        "newPkg=$pkg biometricState=$biometricPromptState"
+                )
+
+                armWatchdog()
+                return
+            }
+
             scheduleProvisionalDepartureConfirmation(currentOwner)
 
             android.util.Log.d(
@@ -1013,11 +1111,18 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
             armWatchdog()
 
+            val biometricActive =
+                isBiometricPromptActiveFor(
+                    active.packageName,
+                    active.requestId
+                )
+
             android.util.Log.d(
                 "AppLockDiag",
                 "provisional departure during active auth " +
                     "owner=${active.packageName} requestId=${active.requestId} " +
-                    "eventPkg=$pkg"
+                    "eventPkg=$pkg biometricActive=$biometricActive " +
+                    "biometricState=$biometricPromptState"
             )
 
             return
@@ -1130,6 +1235,37 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             provisionalDeparturePackage
                 ?: return
 
+        val active = pending
+
+        // BiometricPrompt legitimately exposes SystemUI/launcher as the
+        // foreground surface. Never finalize a departure while the exact
+        // protected-app request is in biometric authentication.
+        if (
+            active != null &&
+            active.packageName == owner &&
+            isBiometricPromptActiveFor(
+                active.packageName,
+                active.requestId
+            )
+        ) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "provisional departure held: biometric in progress " +
+                    "owner=$owner requestId=${active.requestId} " +
+                    "state=$biometricPromptState"
+            )
+
+            mainHandler.removeCallbacks(
+                provisionalDepartureRunnable
+            )
+            mainHandler.postDelayed(
+                provisionalDepartureRunnable,
+                BIOMETRIC_DEPARTURE_RECHECK_MS
+            )
+            armWatchdog()
+            return
+        }
+
         provisionalDeparturePackage = null
 
         val visible =
@@ -1166,6 +1302,145 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             pkg = primary ?: owner,
             previous = owner
         )
+    }
+
+    // ------------------------------------------------ biometric prompt state
+
+    private fun onBiometricPromptStateChanged(
+        targetPackage: String,
+        requestId: Long,
+        state: BiometricPromptState
+    ) {
+        if (targetPackage.isBlank() || requestId == 0L) {
+            return
+        }
+
+        val current = pending
+
+        // A biometric notification is request-bound. Ignore callbacks from
+        // an old LockActivity after a newer request has replaced it.
+        if (
+            current == null ||
+            current.packageName != targetPackage ||
+            current.requestId != requestId
+        ) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "ignoring stale biometric state=$state " +
+                    "pkg=$targetPackage requestId=$requestId " +
+                    "activePkg=${current?.packageName} " +
+                    "activeReqId=${current?.requestId}"
+            )
+            return
+        }
+
+        when (state) {
+            BiometricPromptState.STARTED,
+            BiometricPromptState.IN_PROGRESS -> {
+                biometricPromptPackage = targetPackage
+                biometricPromptRequestId = requestId
+                biometricPromptState = state
+
+                // A previous departure confirmation may already be queued
+                // because SystemUI appeared before the prompt callback. Keep
+                // it from firing while biometric is active.
+                if (provisionalDeparturePackage == targetPackage) {
+                    mainHandler.removeCallbacks(
+                        provisionalDepartureRunnable
+                    )
+                    mainHandler.postDelayed(
+                        provisionalDepartureRunnable,
+                        BIOMETRIC_DEPARTURE_RECHECK_MS
+                    )
+                }
+
+                /*
+                 * NEVER show the sponsor/privacy barrier while Android's
+                 * BiometricPrompt owns the foreground. TYPE_ACCESSIBILITY_OVERLAY
+                 * can sit above transient system surfaces on some OEM builds.
+                 * Re-showing our sponsor here can therefore cover/intercept
+                 * the biometric prompt and cause it to be cancelled.
+                 *
+                 * The protected-app transaction remains alive through the
+                 * request-bound biometric state; the system biometric UI is
+                 * the only foreground surface allowed during this phase.
+                 */
+                removeProtectionOverlay()
+
+                android.util.Log.d(
+                    "AppLockDiag",
+                    "biometric prompt $state pkg=$targetPackage " +
+                        "requestId=$requestId sponsorSuppressed=true"
+                )
+            }
+
+            BiometricPromptState.SUCCEEDED,
+            BiometricPromptState.FAILED,
+            BiometricPromptState.CANCELLED -> {
+                biometricPromptPackage = targetPackage
+                biometricPromptRequestId = requestId
+                biometricPromptState = state
+
+                android.util.Log.d(
+                    "AppLockDiag",
+                    "biometric prompt $state pkg=$targetPackage " +
+                        "requestId=$requestId"
+                )
+
+                if (state != BiometricPromptState.SUCCEEDED) {
+                    clearBiometricPromptState(
+                        targetPackage,
+                        requestId
+                    )
+                }
+            }
+
+            BiometricPromptState.IDLE -> {
+                clearBiometricPromptState(
+                    targetPackage,
+                    requestId
+                )
+            }
+        }
+    }
+
+    private fun isBiometricPromptActiveFor(
+        targetPackage: String,
+        requestId: Long
+    ): Boolean =
+        biometricPromptPackage == targetPackage &&
+            biometricPromptRequestId == requestId &&
+            (
+                biometricPromptState == BiometricPromptState.STARTED ||
+                    biometricPromptState == BiometricPromptState.IN_PROGRESS ||
+                    biometricPromptState == BiometricPromptState.SUCCEEDED
+                )
+
+    private fun clearBiometricPromptState(
+        targetPackage: String,
+        requestId: Long
+    ) {
+        if (
+            biometricPromptPackage == targetPackage &&
+            biometricPromptRequestId == requestId
+        ) {
+            biometricPromptPackage = null
+            biometricPromptRequestId = 0L
+            biometricPromptState = BiometricPromptState.IDLE
+
+            if (provisionalDeparturePackage == targetPackage) {
+                mainHandler.removeCallbacks(
+                    provisionalDepartureRunnable
+                )
+                provisionalDeparturePackage = null
+            }
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "biometric prompt state cleared pkg=$targetPackage " +
+                    "requestId=$requestId"
+            )
+        }
     }
 
     // --------------------------------------------------------- lock decision
@@ -1447,9 +1722,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                                     "over window enumeration"
                             )
 
-                            showProtectionOverlay(
-                                barrierPackage = current.packageName
-                            )
+                            removeProtectionOverlay()
 
                             armWatchdog()
                             return
@@ -1509,9 +1782,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                                     "(reported foreground=$primaryForPending)"
                             )
 
-                            showProtectionOverlay(
-                                barrierPackage = current.packageName
-                            )
+                            removeProtectionOverlay()
 
                             armWatchdog()
                             return
@@ -1588,22 +1859,35 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
             if (!current.lockUiVisible) {
                 /*
-                 * Automatically launch the exact same LockActivity request.
+                 * Before the user accepts Sponsor Continue, the existing
+                 * sponsor barrier may remain visible while LockActivity is
+                 * being launched. After Sponsor Continue has already been
+                 * accepted, however, the sponsor must NEVER come back for the
+                 * same request. This is especially important after a
+                 * BiometricPrompt lifecycle transition, where LockActivity can
+                 * briefly stop and the watchdog may otherwise repaint the
+                 * sponsor over the authentication flow.
                  */
-                showProtectionOverlay(
-                    barrierPackage = current.packageName
-                )
+                if (current.sponsorContinued) {
+                    removeProtectionOverlay()
+                } else {
+                    showProtectionOverlay(
+                        barrierPackage = current.packageName
+                    )
+                }
 
                 maybeRelaunchLockUi(current)
 
             } else if (!current.lockUiReady) {
 
                 /*
-                 * LockActivity exists but has not obtained real focus yet.
+                 * LockActivity exists. The sponsor/barrier must never be
+                 * painted over an existing authentication Activity. Android
+                 * may temporarily report launcher/SystemUI while biometric
+                 * owns the foreground, but the LockActivity remains the
+                 * authoritative security surface for this transaction.
                  */
-                showProtectionOverlay(
-                    barrierPackage = current.packageName
-                )
+                removeProtectionOverlay()
 
             } else {
 
@@ -1774,6 +2058,15 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         }
 
         /*
+         * Sponsor Continue owns the launch for this exact transaction. Once
+         * it has been accepted, the watchdog must not create a competing
+         * LockActivity launch while the original launch is settling.
+         */
+        if (current.sponsorContinued) {
+            return
+        }
+
+        /*
          * The sponsor is not an authentication decision and must never be a
          * prerequisite for the real lock UI.
          */
@@ -1834,7 +2127,11 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         if (
             current.lockUiVisible ||
             current.lockUiReady ||
-            current.launchInFlight
+            current.launchInFlight ||
+            isBiometricPromptActiveFor(
+                targetPackage,
+                requestId
+            )
         ) {
             return
         }
@@ -1913,6 +2210,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                     )
                 }.onFailure {
                     live.launchInFlight = false
+                    live.sponsorContinued = false
 
                     android.util.Log.w(
                         "AppLockDiag",
@@ -2217,9 +2515,48 @@ class AppDetectionAccessibilityService : AccessibilityService() {
      * on an already-attached window, not a fresh WindowManager.addView()/
      * removeView() call.
      */
+    private fun isBiometricPromptActiveForPending(
+        targetPackage: String
+    ): Boolean {
+        val active = pending ?: return false
+
+        return active.packageName == targetPackage &&
+            biometricPromptPackage == targetPackage &&
+            biometricPromptRequestId == active.requestId &&
+            (
+                biometricPromptState == BiometricPromptState.STARTED ||
+                    biometricPromptState == BiometricPromptState.IN_PROGRESS ||
+                    biometricPromptState == BiometricPromptState.SUCCEEDED
+                )
+    }
+
     private fun showProtectionOverlay(
         barrierPackage: String? = null
     ): Boolean {
+        /*
+         * Hard invariant: once the exact protected-app request is inside an
+         * Android BiometricPrompt, this Accessibility overlay must never be
+         * made visible again. The overlay is a sponsor/privacy barrier and is
+         * not part of authentication. Showing it above SystemUI can obscure
+         * the biometric prompt and can result in ERROR_USER_CANCELED.
+         *
+         * Keep this guard at the lowest common overlay entry point because
+         * several independent foreground/watchdog paths can request the
+         * barrier. This prevents a future path from accidentally reintroducing
+         * the same race.
+         */
+        if (barrierPackage != null && isBiometricPromptActiveForPending(barrierPackage)) {
+            removeProtectionOverlay()
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "Sponsor barrier suppressed during biometric " +
+                    "pkg=$barrierPackage requestId=${biometricPromptRequestId} " +
+                    "state=$biometricPromptState"
+            )
+            return false
+        }
+
         val overlay =
             ensureBarrierWindowAttached()
                 ?: return false
@@ -2520,12 +2857,47 @@ val domain =
             return
         }
 
+        /*
+         * The sponsor/transition button is a one-shot operation for the
+         * exact package + requestId.  Once the lock Activity is already
+         * visible/ready, or a launch is already in flight, a late/stale
+         * button callback must NEVER start another LockActivity.
+         *
+         * This is particularly important while BiometricPrompt owns the
+         * foreground: a second Activity launch can cancel/recreate the lock
+         * Activity on some OEM builds and consequently cancel the biometric
+         * prompt.
+         */
+        if (
+            current.sponsorContinued ||
+            current.lockUiVisible ||
+            current.lockUiReady ||
+            current.launchInFlight ||
+            isBiometricPromptActiveFor(
+                current.packageName,
+                current.requestId
+            )
+        ) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "Sponsor Continue ignored " +
+                    "pkg=${current.packageName} " +
+                    "requestId=${current.requestId} " +
+                    "sponsorContinued=${current.sponsorContinued} " +
+                    "lockUiVisible=${current.lockUiVisible} " +
+                    "lockUiReady=${current.lockUiReady} " +
+                    "launchInFlight=${current.launchInFlight} " +
+                    "biometricState=$biometricPromptState"
+            )
+            return
+        }
+
         current.sponsorContinued =
             true
 
         android.util.Log.d(
             "AppLockDiag",
-            "Sponsor Continue -> launching LockActivity " +
+            "Sponsor Continue accepted -> launching LockActivity " +
                 "pkg=${current.packageName} " +
                 "requestId=${current.requestId}"
         )
@@ -2656,14 +3028,129 @@ val domain =
             visible.windowsPrimary
                 ?: visible.usageStatsPrimary
 
-        if (primary == targetPackage) {
-            showProtectionOverlay(
-                barrierPackage =
-                    targetPackage
-            )
-        }
+        // Do not immediately recreate the sponsor overlay here. Activity
+        // stop/destroy can be a transient lifecycle event (especially around
+        // BiometricPrompt). The watchdog will decide whether a real departure
+        // occurred and only then recreate protection UI.
+        removeProtectionOverlay()
 
         armWatchdog()
+    }
+
+    /**
+     * Completes the biometric -> protected-app hand-off without depending on
+     * LockActivity still being alive. BiometricPrompt is system-owned and can
+     * move/destroy the lock Activity on some devices before its success
+     * callback is delivered.
+     *
+     * The LockEngine has already authenticated the exact request and created
+     * the one-shot LaunchAuthorization. This method consumes that authorization
+     * exactly once and launches the target from the already-running
+     * AccessibilityService. PIN/Pattern continue to use LockActivity's existing
+     * launch path.
+     */
+    private fun completeBiometricAuthenticationHandoffInternal(
+        targetPackage: String,
+        requestId: Long
+    ): Boolean {
+        val current = pending
+
+        if (
+            current == null ||
+            current.packageName != targetPackage ||
+            current.requestId != requestId
+        ) {
+            android.util.Log.w(
+                "AppLockDiag",
+                "BIOMETRIC_HANDOFF_REJECTED pending mismatch " +
+                    "pkg=$targetPackage requestId=$requestId " +
+                    "activePkg=${current?.packageName} activeReqId=${current?.requestId}"
+            )
+            return false
+        }
+
+        if (!app.lockEngine.hasLaunchAuthorization(targetPackage, requestId)) {
+            android.util.Log.w(
+                "AppLockDiag",
+                "BIOMETRIC_HANDOFF_REJECTED missing authorization " +
+                    "pkg=$targetPackage requestId=$requestId"
+            )
+            return false
+        }
+
+        if (!app.repository.isProtected(targetPackage)) {
+            android.util.Log.w(
+                "AppLockDiag",
+                "BIOMETRIC_HANDOFF_REJECTED target no longer protected " +
+                    "pkg=$targetPackage requestId=$requestId"
+            )
+            return false
+        }
+
+        val launchIntent =
+            packageManager.getLaunchIntentForPackage(targetPackage)
+                ?: run {
+                    android.util.Log.w(
+                        "AppLockDiag",
+                        "BIOMETRIC_HANDOFF_REJECTED no launch intent " +
+                            "pkg=$targetPackage requestId=$requestId"
+                    )
+                    return false
+                }
+
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        // Consume immediately before the launch. The service is serialized on
+        // its main handler, so a second biometric callback cannot consume it.
+        if (!app.lockEngine.consumeLaunchAuthorization(targetPackage, requestId)) {
+            android.util.Log.w(
+                "AppLockDiag",
+                "BIOMETRIC_HANDOFF_REJECTED authorization already consumed " +
+                    "pkg=$targetPackage requestId=$requestId"
+            )
+            return false
+        }
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "BIOMETRIC_HANDOFF_LAUNCH pkg=$targetPackage requestId=$requestId"
+        )
+
+        return try {
+            startActivity(launchIntent)
+
+            // Only now is the authentication transaction allowed to disappear.
+            // This preserves the SystemUI/biometric departure guard until the
+            // target launch has actually been submitted to Android.
+            clearPending()
+            cancelProvisionalDeparture(targetPackage)
+            clearBiometricPromptState(targetPackage, requestId)
+            lastForegroundPackage = targetPackage
+            removeProtectionOverlay()
+            armWatchdog()
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "BIOMETRIC_HANDOFF_COMPLETE pkg=$targetPackage requestId=$requestId"
+            )
+            true
+        } catch (t: Throwable) {
+            android.util.Log.e(
+                "AppLockDiag",
+                "BIOMETRIC_HANDOFF_LAUNCH_FAILED pkg=$targetPackage requestId=$requestId",
+                t
+            )
+            // Do not silently leave the old request active after a launch
+            // failure. The authorization was consumed, so force a clean
+            // transaction boundary and let foreground reconciliation request
+            // authentication again if the protected app remains visible.
+            clearPending()
+            cancelProvisionalDeparture(targetPackage)
+            clearBiometricPromptState(targetPackage, requestId)
+            removeProtectionOverlay()
+            armWatchdog()
+            false
+        }
     }
 
     fun onAuthenticationSucceeded(
@@ -2702,6 +3189,14 @@ val domain =
             targetPackage
         )
 
+        // LockActivity has already consumed the one-shot launch authorization
+        // and is now handing off to the protected app. Release the biometric
+        // guard only after that hand-off has been accepted.
+        clearBiometricPromptState(
+            targetPackage,
+            requestId
+        )
+
         lastForegroundPackage =
             targetPackage
 
@@ -2733,6 +3228,10 @@ val domain =
 
         provisionalDeparturePackage =
             null
+
+        biometricPromptPackage = null
+        biometricPromptRequestId = 0L
+        biometricPromptState = BiometricPromptState.IDLE
 
         managementAuthorizedUntilElapsed =
             0L
@@ -2900,6 +3399,10 @@ val domain =
         const val DEPARTURE_CONFIRM_DELAY_MS =
             450L
 
+        /** Recheck cadence while SystemUI owns the foreground for biometric. */
+        const val BIOMETRIC_DEPARTURE_RECHECK_MS =
+            150L
+
         const val PROTECTION_REFRESH_INTERVAL_MS =
             1_000L
 
@@ -2945,6 +3448,24 @@ val domain =
             )
         }
 
+        fun notifyBiometricPromptState(
+            targetPackage: String,
+            requestId: Long,
+            state: String
+        ) {
+            val parsed =
+                runCatching {
+                    BiometricPromptState.valueOf(state)
+                }.getOrNull()
+                    ?: return
+
+            instance?.onBiometricPromptStateChanged(
+                targetPackage,
+                requestId,
+                parsed
+            )
+        }
+
         /**
          * Explicit user cancellation from LockActivity.
          *
@@ -2956,6 +3477,24 @@ val domain =
             requestId: Long
         ) {
             instance?.onLockActivityUserCancelled(
+                targetPackage,
+                requestId
+            )
+        }
+
+        fun completeBiometricAuthenticationHandoff(
+            targetPackage: String,
+            requestId: Long
+        ): Boolean {
+            val service = instance ?: return false
+
+            // All foreground transaction state is owned by the service main
+            // thread. The biometric callback normally arrives on the main
+            // executor, but post-and-wait would introduce another race. The
+            // current implementation therefore accepts the hand-off directly
+            // while the service state is synchronized by Android's main-thread
+            // callback path.
+            return service.completeBiometricAuthenticationHandoffInternal(
                 targetPackage,
                 requestId
             )
@@ -2973,6 +3512,10 @@ val domain =
 
         fun notifyAppLockMainUiShown() {
             instance?.handleAppLockMainUiShown()
+        }
+
+        fun notifySecurityConfigurationChanged() {
+            instance?.onSecurityConfigurationChanged()
         }
 
         /**
