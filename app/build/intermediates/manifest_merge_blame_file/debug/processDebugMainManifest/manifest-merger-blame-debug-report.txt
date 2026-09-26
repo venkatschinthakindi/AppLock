@@ -289,7 +289,7 @@
 164-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:105:9-107:70
 165            android:name="com.google.android.gms.ads.APPLICATION_ID"
 165-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:106:13-69
-166            android:value="ca-app-pub-1267608571294570~6976756241" />
+166            android:value="ca-app-pub-1267608571294570~2771837214" />
 166-->D:\Work\prod_v2\AppLock-Production-Phase1-5-Kotlin\app\src\main\AndroidManifest.xml:107:13-67
 167        <!-- Include the AdActivity and InAppPurchaseActivity configChanges and themes. -->
 168        <activity

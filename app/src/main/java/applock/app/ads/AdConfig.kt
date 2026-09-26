@@ -3,13 +3,13 @@ package applock.app.ads
 object AdConfig {
 
     const val ADMOB_APP_ID =
-        "ca-app-pub-1267608571294570~6976756241"
+        "ca-app-pub-1267608571294570~2771837214"
 
     const val TEST_BANNER_UNIT_ID =
         "ca-app-pub-3940256099942544/9214589741"
 
     const val PRODUCTION_BANNER_UNIT_ID =
-        "ca-app-pub-1267608571294570/9300656932"
+        "ca-app-pub-1267608571294570/4847425509"
 
     const val SPONSOR_NAME = "Atoolix"
 

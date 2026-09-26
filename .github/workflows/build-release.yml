@@ -173,7 +173,7 @@ jobs:
 
           # Production AdMob application ID must exist.
           grep -q \
-            'ca-app-pub-1267608571294570~6976756241' \
+            'ca-app-pub-1267608571294570~2771837214' \
             "${MANIFEST}" || {
               echo "ERROR: Production AdMob application ID not found."
               exit 1
@@ -181,7 +181,7 @@ jobs:
 
           # Production banner unit ID must exist.
           grep -q \
-            'ca-app-pub-1267608571294570/9300656932' \
+            'ca-app-pub-1267608571294570/4847425509' \
             "${AD_CONFIG}" || {
               echo "ERROR: Production AdMob banner unit ID not found."
               exit 1
