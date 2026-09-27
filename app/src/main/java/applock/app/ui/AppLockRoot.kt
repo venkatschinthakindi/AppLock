@@ -138,11 +138,6 @@ fun AppLockRoot(
      * ------------------------------------------------------------------
      * DEVICE ADMIN
      * ------------------------------------------------------------------
-     *
-     * Device Admin is a real Android system state.
-     *
-     * Do not use the activity result code alone because Android/OEMs
-     * can return different values. Always verify isAdminActive().
      */
     val devicePolicyManager =
         remember(context) {
@@ -171,8 +166,8 @@ fun AppLockRoot(
         LocalLifecycleOwner.current
 
     /*
-     * Re-check Device Admin whenever AppLock returns from Android's
-     * system confirmation UI or Settings.
+     * Re-check Device Admin whenever AppLock returns from an Android
+     * system screen.
      */
     DisposableEffect(
         lifecycleOwner,
@@ -211,11 +206,8 @@ fun AppLockRoot(
      * FIRST-RUN STATE
      * ------------------------------------------------------------------
      *
-     * Protection mode is now an explicit first-run requirement.
-     *
-     * The mode is deliberately checked after authentication because
-     * protection mode controls how the already-configured protection
-     * system behaves.
+     * Protection Mode is required once authentication setup has
+     * completed.
      */
     var firstRunStep by remember {
 
@@ -251,7 +243,7 @@ fun AppLockRoot(
 
     /*
      * ------------------------------------------------------------------
-     * DEVICE ADMIN RETURN HANDLING
+     * DEVICE ADMIN RETURN
      * ------------------------------------------------------------------
      */
     LaunchedEffect(
@@ -294,8 +286,6 @@ fun AppLockRoot(
      * ------------------------------------------------------------------
      * DEVICE ADMIN LAUNCHER
      * ------------------------------------------------------------------
-     *
-     * Android owns the actual Device Admin confirmation screen.
      */
     val deviceAdminLauncher =
         rememberLauncherForActivityResult(
@@ -341,10 +331,8 @@ fun AppLockRoot(
      * ADS
      * ------------------------------------------------------------------
      *
-     * Ads are initialized only after ALL first-run security/protection
-     * setup has completed.
-     *
-     * Authentication and protection mode selection never depend on ads.
+     * Ads are initialized only after first-run security and protection
+     * mode setup are complete.
      */
     var adsReady by remember {
         mutableStateOf(
@@ -391,7 +379,7 @@ fun AppLockRoot(
 
     /*
      * ------------------------------------------------------------------
-     * THEME
+     * APP THEME
      * ------------------------------------------------------------------
      */
     AppLockTheme(theme) {
@@ -456,10 +444,9 @@ fun AppLockRoot(
                     onNotNow = {
 
                         /*
-                         * User explicitly chose to continue without
-                         * Device Admin.
-                         *
-                         * Do not repeatedly block first-run.
+                         * The user explicitly declined Device Admin.
+                         * Record the decision so first-run does not
+                         * repeatedly stop here.
                          */
                         FirstRunSetupState
                             .markDeviceAdminDecisionComplete(
@@ -496,14 +483,6 @@ fun AppLockRoot(
 
                 AccessibilityDisclosureScreen {
 
-                    /*
-                     * AccessibilityDisclosureScreen already records
-                     * the disclosure acceptance and opens Android
-                     * Accessibility Settings.
-                     *
-                     * When the user returns, continue through the
-                     * remaining first-run security configuration.
-                     */
                     repository.refreshProtectionState()
 
                     firstRunStep =
@@ -527,12 +506,6 @@ fun AppLockRoot(
              * ==========================================================
              * STEP 4 — SECURITY / AUTHENTICATION SETUP
              * ==========================================================
-             *
-             * First installation:
-             *
-             * No authentication exists yet, so the user can directly
-             * select/configure PIN, pattern, or biometric according
-             * to the existing Security Setup flow.
              */
             FIRST_RUN_SECURITY -> {
 
@@ -541,9 +514,10 @@ fun AppLockRoot(
                     onComplete = {
 
                         /*
-                         * Authentication has now been configured.
+                         * Authentication is now configured.
                          *
-                         * Protection mode is the next first-run step.
+                         * Continue to Protection Mode unless a mode
+                         * was already selected.
                          */
                         firstRunStep =
                             if (
@@ -564,34 +538,33 @@ fun AppLockRoot(
              * STEP 5 — PROTECTION MODE
              * ==========================================================
              *
-             * This is deliberately a separate first-run screen.
-             *
-             * The user must make the protection-mode decision once.
-             *
-             * ProtectionModeSelectionScreen is responsible only for
-             * presenting the two modes and persisting the selected
-             * mode through ProtectionModeState.
+             * The current ProtectionModeSelectionScreen API exposes
+             * separate callbacks for Standard and Enhanced.
              */
             FIRST_RUN_PROTECTION_MODE -> {
 
                 ProtectionModeSelectionScreen(
 
-                    onComplete = {
+                    onStandardSelected = {
 
-                        /*
-                         * Re-read persisted state rather than assuming
-                         * that the callback itself means selection was
-                         * successfully persisted.
-                         */
-                        if (
-                            ProtectionModeState.isSelected(
-                                context
-                            )
-                        ) {
+                        ProtectionModeState.set(
+                            context,
+                            ProtectionModeState.Mode.STANDARD
+                        )
 
-                            firstRunStep =
-                                FIRST_RUN_DONE
-                        }
+                        firstRunStep =
+                            FIRST_RUN_DONE
+                    },
+
+                    onEnhancedSelected = {
+
+                        ProtectionModeState.set(
+                            context,
+                            ProtectionModeState.Mode.ENHANCED
+                        )
+
+                        firstRunStep =
+                            FIRST_RUN_DONE
                     }
                 )
             }
@@ -774,13 +747,6 @@ fun AppLockRoot(
                                 }
                             }
 
-                            /*
-                             * Free users receive the banner area.
-                             *
-                             * Protection-mode setup happens before this
-                             * normal-app surface, so ads cannot interfere
-                             * with first-run security configuration.
-                             */
                             if (
                                 destination != "pro"
                             ) {
