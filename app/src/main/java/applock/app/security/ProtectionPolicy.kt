@@ -3,8 +3,6 @@ package applock.app.security
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import android.os.Build
-import android.app.role.RoleManager
 import applock.app.ui.ProtectionModeState
 
 object ProtectionPolicy {
@@ -12,35 +10,30 @@ object ProtectionPolicy {
     data class Status(
         val selectedMode: ProtectionModeState.Mode,
         val deviceAdminActive: Boolean,
-        val deviceOwnerActive: Boolean,
-        val homeRoleHeld: Boolean
+        val deviceOwnerActive: Boolean
     ) {
         val enhancedSelected: Boolean
             get() =
                 selectedMode == ProtectionModeState.Mode.ENHANCED
 
+        /**
+         * Enhanced Protection is actually enforceable only when
+         * AppLock is Device Owner.
+         */
         val enhancedEnforced: Boolean
             get() =
                 enhancedSelected &&
-                    deviceOwnerActive &&
-                    homeRoleHeld
+                    deviceOwnerActive
 
         val enhancedNeedsDeviceOwner: Boolean
             get() =
                 enhancedSelected &&
                     !deviceOwnerActive
 
-        val enhancedNeedsHomeRole: Boolean
-            get() =
-                enhancedSelected &&
-                    deviceOwnerActive &&
-                    !homeRoleHeld
-
         /**
-         * Kept for compatibility with existing UI.
+         * Kept for compatibility with existing UI/code.
          *
-         * Enhanced Protection requires Device Owner,
-         * not merely ordinary Device Admin.
+         * Device Admin is NOT sufficient for Enhanced Protection.
          */
         val enhancedNeedsDeviceAdmin: Boolean
             get() = enhancedNeedsDeviceOwner
@@ -72,25 +65,6 @@ object ProtectionPolicy {
                 context.packageName
             ) == true
 
-    fun isHomeRoleHeld(
-        context: Context
-    ): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return false
-        }
-
-        val roleManager =
-            context.getSystemService(
-                RoleManager::class.java
-            ) ?: return false
-
-        return runCatching {
-            roleManager.isRoleHeld(
-                RoleManager.ROLE_HOME
-            )
-        }.getOrDefault(false)
-    }
-
     fun isEnhancedSelected(
         context: Context
     ): Boolean =
@@ -105,9 +79,7 @@ object ProtectionPolicy {
             deviceAdminActive =
                 isDeviceAdminActive(context),
             deviceOwnerActive =
-                isDeviceOwner(context),
-            homeRoleHeld =
-                isHomeRoleHeld(context)
+                isDeviceOwner(context)
         )
 
     fun selectStandard(
@@ -124,11 +96,8 @@ object ProtectionPolicy {
     fun selectEnhancedIfAvailable(
         context: Context
     ): Boolean {
-        if (!isDeviceOwner(context)) {
-            return false
-        }
 
-        if (!isHomeRoleHeld(context)) {
+        if (!isDeviceOwner(context)) {
             return false
         }
 
@@ -150,14 +119,8 @@ object ProtectionPolicy {
     ): Boolean =
         status(context).enhancedNeedsDeviceOwner
 
-    fun requiresHomeRole(
-        context: Context
-    ): Boolean =
-        status(context).enhancedNeedsHomeRole
-
     fun requiresEnhancedSetup(
         context: Context
     ): Boolean =
-        requiresDeviceOwner(context) ||
-            requiresHomeRole(context)
+        requiresDeviceOwner(context)
 }

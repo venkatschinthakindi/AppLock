@@ -29,6 +29,36 @@
         android:theme="@style/Theme.AppLock"
         android:usesCleartextTraffic="false">
 
+<activity
+    android:name=".security.ProvisioningModeActivity"
+    android:exported="true"
+    android:theme="@style/Theme.AppLock">
+
+    <intent-filter>
+        <action
+            android:name="android.app.action.GET_PROVISIONING_MODE" />
+
+        <category
+            android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+
+</activity>
+
+<activity
+    android:name=".security.PolicyComplianceActivity"
+    android:exported="true"
+    android:theme="@style/Theme.AppLock">
+
+    <intent-filter>
+        <action
+            android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
+
+        <category
+            android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+
+</activity>
+
         <!--
             Security UI runs in a separate task from the normal AppLock task.
             This is critical: tapping the AppLock launcher icon must always
@@ -66,7 +96,35 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+<activity
+    android:name=".security.ProvisioningModeActivity"
+    android:exported="true"
+    android:theme="@style/Theme.AppLock">
 
+    <intent-filter>
+        <action
+            android:name="android.app.action.GET_PROVISIONING_MODE" />
+
+        <category
+            android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+
+</activity>
+
+<activity
+    android:name=".security.PolicyComplianceActivity"
+    android:exported="true"
+    android:theme="@style/Theme.AppLock">
+
+    <intent-filter>
+        <action
+            android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
+
+        <category
+            android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+
+</activity>
         <service
             android:name=".service.AppDetectionAccessibilityService"
             android:exported="false"

@@ -87,6 +87,26 @@
         android:testOnly="true"
         android:theme="@style/Theme.AppLock"
         android:usesCleartextTraffic="false" >
+        <activity
+            android:name="applock.app.security.ProvisioningModeActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppLock" >
+            <intent-filter>
+                <action android:name="android.app.action.GET_PROVISIONING_MODE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="applock.app.security.PolicyComplianceActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppLock" >
+            <intent-filter>
+                <action android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <!--
             Security UI runs in a separate task from the normal AppLock task.
@@ -122,6 +142,26 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="applock.app.security.ProvisioningModeActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppLock" >
+            <intent-filter>
+                <action android:name="android.app.action.GET_PROVISIONING_MODE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="applock.app.security.PolicyComplianceActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppLock" >
+            <intent-filter>
+                <action android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

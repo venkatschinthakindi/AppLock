@@ -8,15 +8,9 @@ import android.util.Log
 /**
  * OS-level privacy boundary for Enhanced Protection.
  *
- * Enhanced Protection requires:
+ * Enhanced Protection requires AppLock to be Device Owner.
  *
- * 1. AppLock is Device Owner
- * 2. AppLock holds the HOME role
- *
- * Device Admin alone is deliberately NOT sufficient.
- *
- * DevicePolicyManager package suspension is the OS-level
- * protection boundary.
+ * Ordinary Device Admin is intentionally NOT treated as sufficient.
  */
 object EnhancedProtectionManager {
 
@@ -30,14 +24,24 @@ object EnhancedProtectionManager {
         FAILED
     }
 
+    /**
+     * True only when AppLock has the authority required to use
+     * DevicePolicyManager package suspension.
+     */
     fun hasOsBoundaryAuthority(
         context: Context
     ): Boolean {
+
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
-            ProtectionPolicy.isDeviceOwner(context) &&
-            ProtectionPolicy.isHomeRoleHeld(context)
+            ProtectionPolicy.isDeviceOwner(context)
     }
 
+    /**
+     * Suspends protected applications at the OS level.
+     *
+     * A suspended package cannot start activities and does not appear
+     * in Android Overview/Recents.
+     */
     fun suspendProtectedPackages(
         context: Context,
         packages: Set<String>
@@ -125,6 +129,9 @@ object EnhancedProtectionManager {
         }
     }
 
+    /**
+     * Temporarily releases the OS boundary for an authenticated launch.
+     */
     fun prepareAuthorizedLaunch(
         context: Context,
         packageName: String
@@ -143,9 +150,10 @@ object EnhancedProtectionManager {
         }
 
         if (!hasOsBoundaryAuthority(context)) {
+
             Log.e(
                 TAG,
-                "Authorized launch rejected: OS boundary " +
+                "Authorized launch rejected: Device Owner " +
                     "authority unavailable"
             )
 
@@ -202,6 +210,9 @@ object EnhancedProtectionManager {
         }
     }
 
+    /**
+     * Re-establish the OS boundary after returning to AppLock.
+     */
     fun reapplyAfterReturnToGate(
         context: Context,
         protectedPackages: Set<String>
@@ -221,6 +232,9 @@ object EnhancedProtectionManager {
         )
     }
 
+    /**
+     * Re-suspend one protected package.
+     */
     fun restoreBoundary(
         context: Context,
         packageName: String
@@ -236,6 +250,9 @@ object EnhancedProtectionManager {
         )
     }
 
+    /**
+     * Check the actual OS suspension state.
+     */
     fun isSuspended(
         context: Context,
         packageName: String
@@ -262,6 +279,9 @@ object EnhancedProtectionManager {
         }.getOrDefault(false)
     }
 
+    /**
+     * Restore the OS boundary for all currently protected packages.
+     */
     fun restoreAllProtectedPackages(
         context: Context,
         protectedPackages: Set<String>
@@ -278,16 +298,10 @@ object EnhancedProtectionManager {
     }
 
     /**
-     * Disable the OS boundary when Enhanced Protection is
-     * no longer active.
+     * Called when switching away from Enhanced Protection.
      *
-     * We intentionally do not attempt to discover arbitrary
-     * installed packages here. The active protection snapshot
-     * is restored by the service/MainActivity lifecycle before
-     * Enhanced Protection is disabled.
-     *
-     * If there is no Device Owner authority, there is nothing
-     * we are allowed to change.
+     * Actual package unsuspension should happen before the mode is
+     * changed to STANDARD so that enhanced enforcement is still true.
      */
     fun disable(
         context: Context
@@ -296,7 +310,7 @@ object EnhancedProtectionManager {
             return
         }
 
-        if (!hasOsBoundaryAuthority(context)) {
+        if (!ProtectionPolicy.isDeviceOwner(context)) {
             return
         }
 
