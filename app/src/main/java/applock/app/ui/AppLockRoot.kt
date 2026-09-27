@@ -328,6 +328,51 @@ fun AppLockRoot(
 
     /*
      * ------------------------------------------------------------------
+     * ENHANCED PROTECTION — DEVICE ADMIN LAUNCHER
+     * ------------------------------------------------------------------
+     *
+     * Distinct from `deviceAdminLauncher` above, which drives the
+     * STEP 2 first-run decision. This launcher is used only when the
+     * user selects Enhanced Protection on the Protection Mode screen
+     * (first-run or, later, Settings) while Device Admin is not yet
+     * active.
+     *
+     * Invariant: ENHANCED must never be persisted unless Device
+     * Admin is actually active. If the user cancels Android's
+     * confirmation screen, deviceAdminActive stays false and we
+     * simply remain wherever we were — nothing is saved.
+     */
+    val enhancedDeviceAdminLauncher =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts
+                    .StartActivityForResult()
+        ) {
+
+            deviceAdminActive =
+                devicePolicyManager.isAdminActive(
+                    deviceAdminComponent
+                )
+
+            if (deviceAdminActive) {
+
+                FirstRunSetupState
+                    .markDeviceAdminDecisionComplete(
+                        context
+                    )
+
+                ProtectionModeState.set(
+                    context,
+                    ProtectionModeState.Mode.ENHANCED
+                )
+
+                firstRunStep =
+                    FIRST_RUN_DONE
+            }
+        }
+
+    /*
+     * ------------------------------------------------------------------
      * ADS
      * ------------------------------------------------------------------
      *
@@ -545,6 +590,9 @@ fun AppLockRoot(
 
                 ProtectionModeSelectionScreen(
 
+                    deviceAdminActive =
+                        deviceAdminActive,
+
                     onStandardSelected = {
 
                         ProtectionModeState.set(
@@ -558,13 +606,48 @@ fun AppLockRoot(
 
                     onEnhancedSelected = {
 
-                        ProtectionModeState.set(
-                            context,
-                            ProtectionModeState.Mode.ENHANCED
-                        )
+                        /*
+                         * Do NOT persist ENHANCED before Android
+                         * confirms Device Admin. See
+                         * enhancedDeviceAdminLauncher above.
+                         */
+                        if (deviceAdminActive) {
 
-                        firstRunStep =
-                            FIRST_RUN_DONE
+                            ProtectionModeState.set(
+                                context,
+                                ProtectionModeState.Mode.ENHANCED
+                            )
+
+                            firstRunStep =
+                                FIRST_RUN_DONE
+
+                        } else {
+
+                            val intent =
+                                Intent(
+                                    DevicePolicyManager
+                                        .ACTION_ADD_DEVICE_ADMIN
+                                ).apply {
+
+                                    putExtra(
+                                        DevicePolicyManager
+                                            .EXTRA_DEVICE_ADMIN,
+                                        deviceAdminComponent
+                                    )
+
+                                    putExtra(
+                                        DevicePolicyManager
+                                            .EXTRA_ADD_EXPLANATION,
+                                        "Enable AppLock device protection " +
+                                            "to strengthen tamper and " +
+                                            "uninstall protection."
+                                    )
+                                }
+
+                            enhancedDeviceAdminLauncher.launch(
+                                intent
+                            )
+                        }
                     }
                 )
             }
