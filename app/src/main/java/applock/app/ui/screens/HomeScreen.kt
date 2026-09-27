@@ -1,6 +1,6 @@
 package applock.app.ui.screens
 
-import android.app.Activity
+import androidx.compose.ui.draw.clip
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -14,11 +14,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
@@ -38,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -46,10 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import applock.app.AppLockApplication
-import applock.app.security.AntiTamperManager
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import applock.app.security.ProtectionPolicy
 
 @Composable
 fun HomeScreen(
@@ -58,8 +57,21 @@ fun HomeScreen(
     val context = LocalContext.current
     val app = context.applicationContext as AppLockApplication
 
+    /*
+     * Protection mode is the policy source of truth.
+     *
+     * Standard Protection does NOT require Device Admin.
+     * Enhanced Protection requires Device Admin to be actively
+     * enforced.
+     */
+    val protectionStatus =
+        ProtectionPolicy.status(context)
+
+    val protectionMode =
+        protectionStatus.selectedMode
+
     val deviceAdminEnabled =
-        AntiTamperManager.isDeviceAdminActive(context)
+        protectionStatus.deviceAdminActive
 
     val protectedCount =
         app.repository.protectedPackages().size
@@ -70,17 +82,31 @@ fun HomeScreen(
     val hasAuth =
         app.repository.hasCredential()
 
+    /*
+     * Device Admin is only a readiness requirement when the user
+     * selected Enhanced Protection.
+     */
     val allReady =
-        deviceAdminEnabled &&
-            serviceEnabled &&
+        serviceEnabled &&
             hasAuth &&
-            protectedCount > 0
+            protectedCount > 0 &&
+            !protectionStatus.enhancedNeedsDeviceAdmin
 
     val statusTitle = when {
-        !hasAuth -> "Set up protection"
-        !serviceEnabled -> "Protection needs attention"
-        protectedCount == 0 -> "Ready to protect"
-        else -> "Protection active"
+        !hasAuth ->
+            "Set up protection"
+
+        !serviceEnabled ->
+            "Protection needs attention"
+
+        protectedCount == 0 ->
+            "Ready to protect"
+
+        protectionStatus.enhancedNeedsDeviceAdmin ->
+            "Enhanced Protection needs attention"
+
+        else ->
+            "Protection active"
     }
 
     val statusDescription = when {
@@ -92,6 +118,9 @@ fun HomeScreen(
 
         protectedCount == 0 ->
             "Choose the apps you want AppLock to protect."
+
+        protectionStatus.enhancedNeedsDeviceAdmin ->
+            "Enhanced Protection is selected, but Device Admin is currently disabled. Re-enable it to restore the selected protection level."
 
         else ->
             "$protectedCount ${
@@ -124,7 +153,9 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(
+                        rememberScrollState()
+                    )
                     .navigationBarsPadding()
                     .background(
                         Brush.verticalGradient(
@@ -151,31 +182,58 @@ fun HomeScreen(
                     onAction = {
                         when {
                             !hasAuth -> {
-                                onNavigate?.invoke("security")
-                            }
-
-                            !serviceEnabled -> {
-                                context.startActivity(
-                                    Intent(
-                                        Settings.ACTION_ACCESSIBILITY_SETTINGS
-                                    )
+                                onNavigate?.invoke(
+                                    "security"
                                 )
                             }
 
-                            protectedCount == 0 -> {
-                                onNavigate?.invoke("apps")
-                            }
-
-                            !deviceAdminEnabled -> {
-                                val activity =
-                                    context as? Activity
-
-                                if (activity != null) {
-                                    AntiTamperManager
-                                        .requestDeviceAdmin(activity)
+                            !serviceEnabled -> {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings
+                                                .ACTION_ACCESSIBILITY_SETTINGS
+                                        )
+                                    )
                                 }
                             }
+
+                            protectedCount == 0 -> {
+                                onNavigate?.invoke(
+                                    "apps"
+                                )
+                            }
+
+                            protectionStatus
+                                .enhancedNeedsDeviceAdmin -> {
+                                /*
+                                 * Do not launch Device Admin directly.
+                                 * Take the user to Protection Level so
+                                 * the explanation screen is shown first.
+                                 */
+                                onNavigate?.invoke(
+                                    "protection_mode"
+                                )
+                            }
                         }
+                    }
+                )
+
+                /*
+                 * ------------------------------------------------------
+                 * PROTECTION LEVEL
+                 * ------------------------------------------------------
+                 */
+                ProtectionLevelCard(
+                    mode = protectionMode,
+                    deviceAdminActive = deviceAdminEnabled,
+                    needsAttention =
+                        protectionStatus
+                            .enhancedNeedsDeviceAdmin,
+                    onClick = {
+                        onNavigate?.invoke(
+                            "protection_mode"
+                        )
                     }
                 )
 
@@ -187,12 +245,15 @@ fun HomeScreen(
                     DashboardTile(
                         modifier = Modifier.weight(1f),
                         title = "Protected apps",
-                        subtitle = "$protectedCount selected",
+                        subtitle =
+                            "$protectedCount selected",
                         icon = Icons.Default.Lock,
                         iconTint =
                             MaterialTheme.colorScheme.primary,
                         onClick = {
-                            onNavigate?.invoke("apps")
+                            onNavigate?.invoke(
+                                "apps"
+                            )
                         }
                     )
 
@@ -204,7 +265,9 @@ fun HomeScreen(
                         iconTint =
                             MaterialTheme.colorScheme.primary,
                         onClick = {
-                            onNavigate?.invoke("security")
+                            onNavigate?.invoke(
+                                "security"
+                            )
                         }
                     )
                 }
@@ -217,19 +280,24 @@ fun HomeScreen(
                     DashboardTile(
                         modifier = Modifier.weight(1f),
                         title = "Protection Health",
-                        subtitle = if (allReady) {
-                            "Fully protected"
-                        } else {
-                            "Needs attention"
-                        },
-                        icon = Icons.Default.HealthAndSafety,
-                        iconTint = if (allReady) {
-                            MaterialTheme.colorScheme.secondary
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
+                        subtitle =
+                            if (allReady) {
+                                "Fully protected"
+                            } else {
+                                "Needs attention"
+                            },
+                        icon =
+                            Icons.Default.HealthAndSafety,
+                        iconTint =
+                            if (allReady) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
                         onClick = {
-                            onNavigate?.invoke("health")
+                            onNavigate?.invoke(
+                                "health"
+                            )
                         }
                     )
 
@@ -241,21 +309,250 @@ fun HomeScreen(
                         iconTint =
                             MaterialTheme.colorScheme.primary,
                         onClick = {
-                            onNavigate?.invoke("smart")
+                            onNavigate?.invoke(
+                                "smart"
+                            )
                         }
                     )
                 }
 
                 SecurityFirstCard(
                     onClick = {
-                        context.startActivity(
-                            Intent(
-                                Settings.ACTION_ACCESSIBILITY_SETTINGS
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Settings
+                                        .ACTION_ACCESSIBILITY_SETTINGS
+                                )
                             )
-                        )
+                        }
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ProtectionLevelCard(
+    mode: applock.app.ui.ProtectionModeState.Mode,
+    deviceAdminActive: Boolean,
+    needsAttention: Boolean,
+    onClick: () -> Unit
+) {
+    val enhanced =
+        mode ==
+            applock.app.ui.ProtectionModeState.Mode.ENHANCED
+
+    val title =
+        if (enhanced) {
+            "Enhanced Protection"
+        } else {
+            "Standard Protection"
+        }
+
+    val subtitle =
+        if (enhanced) {
+            "Accessibility + Android Device Admin"
+        } else {
+            "Accessibility + privacy barrier"
+        }
+
+    val statusText = when {
+        enhanced && needsAttention ->
+            "Device Admin needs to be re-enabled"
+
+        enhanced && deviceAdminActive ->
+            "Enhanced Protection is active"
+
+        else ->
+            "Protection level is active"
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+                    .copy(alpha = 0.97f)
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 1.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(shape = CircleShape)
+                        .background(
+                            MaterialTheme.colorScheme
+                                .primary
+                                .copy(alpha = 0.10f)
+                        ),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
+                    Icon(
+                        imageVector =
+                            Icons.Default.Shield,
+                        contentDescription = null,
+                        tint =
+                            MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(27.dp)
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.width(13.dp)
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Protection Level",
+                        style =
+                            MaterialTheme.typography
+                                .labelMedium,
+                        color =
+                            MaterialTheme.colorScheme
+                                .onSurfaceVariant,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(2.dp)
+                    )
+
+                    Text(
+                        text = title,
+                        style =
+                            MaterialTheme.typography
+                                .titleMedium,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(2.dp)
+                    )
+
+                    Text(
+                        text = subtitle,
+                        style =
+                            MaterialTheme.typography.bodySmall,
+                        color =
+                            MaterialTheme.colorScheme
+                                .onSurfaceVariant
+                    )
+                }
+
+                Icon(
+                    imageVector =
+                        Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint =
+                        MaterialTheme.colorScheme.primary
+                            .copy(alpha = 0.75f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color =
+                    if (needsAttention) {
+                        MaterialTheme.colorScheme
+                            .errorContainer
+                    } else {
+                        MaterialTheme.colorScheme
+                            .secondaryContainer
+                            .copy(alpha = 0.55f)
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = 10.dp
+                        ),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector =
+                            if (needsAttention) {
+                                Icons.Default.Lock
+                            } else {
+                                Icons.Default.CheckCircle
+                            },
+                        contentDescription = null,
+                        tint =
+                            if (needsAttention) {
+                                MaterialTheme.colorScheme
+                                    .onErrorContainer
+                            } else {
+                                MaterialTheme.colorScheme
+                                    .secondary
+                            },
+                        modifier = Modifier.size(18.dp)
+                    )
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Text(
+                        text = statusText,
+                        style =
+                            MaterialTheme.typography
+                                .bodySmall,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                        color =
+                            if (needsAttention) {
+                                MaterialTheme.colorScheme
+                                    .onErrorContainer
+                            } else {
+                                MaterialTheme.colorScheme
+                                    .onSurfaceVariant
+                            }
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            Text(
+                text = "Change protection level",
+                style =
+                    MaterialTheme.typography.labelLarge,
+                color =
+                    MaterialTheme.colorScheme.primary,
+                fontWeight =
+                    FontWeight.SemiBold
+            )
         }
     }
 }
@@ -267,8 +564,11 @@ private fun PremiumHeroCard(
     ready: Boolean,
     onAction: () -> Unit
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
+    val primary =
+        MaterialTheme.colorScheme.primary
+
+    val secondary =
+        MaterialTheme.colorScheme.secondary
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -298,130 +598,161 @@ private fun PremiumHeroCard(
                 )
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
 
-                // Top identity row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment =
+                        Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
                             .size(50.dp)
-                            .clip(CircleShape)
+                            .clip(shape = CircleShape)
                             .background(
-                                Color.White.copy(alpha = 0.15f)
+                                Color.White.copy(
+                                    alpha = 0.15f
+                                )
                             ),
-                        contentAlignment = Alignment.Center
+                        contentAlignment =
+                            Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (ready) {
-                                Icons.Default.Shield
-                            } else {
-                                Icons.Default.Lock
-                            },
+                            imageVector =
+                                if (ready) {
+                                    Icons.Default.Shield
+                                } else {
+                                    Icons.Default.Lock
+                                },
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(27.dp)
                         )
                     }
 
-                    Spacer(Modifier.width(13.dp))
+                    Spacer(
+                        modifier = Modifier.width(13.dp)
+                    )
 
                     Column(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
                             text = title,
-                            style = MaterialTheme.typography.titleLarge,
+                            style =
+                                MaterialTheme.typography
+                                    .titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
 
-                        Spacer(Modifier.height(3.dp))
+                        Spacer(
+                            modifier = Modifier.height(3.dp)
+                        )
 
                         Text(
-                            text = if (ready) {
-                                "Your protected apps are secured"
-                            } else {
-                                "Your protection setup needs attention"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.82f)
+                            text =
+                                if (ready) {
+                                    "Your protected apps are secured"
+                                } else {
+                                    "Your protection setup needs attention"
+                                },
+                            style =
+                                MaterialTheme.typography
+                                    .bodySmall,
+                            color =
+                                Color.White.copy(
+                                    alpha = 0.82f
+                                )
                         )
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(
+                    modifier = Modifier.height(16.dp)
+                )
 
-                // Description — full available width
                 Text(
                     text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.92f),
+                    style =
+                        MaterialTheme.typography.bodyMedium,
+                    color =
+                        Color.White.copy(alpha = 0.92f),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(Modifier.height(15.dp))
+                Spacer(
+                    modifier = Modifier.height(15.dp)
+                )
 
-                // Status badge
                 Surface(
                     shape = RoundedCornerShape(50.dp),
-                    color = Color.White.copy(alpha = 0.14f)
+                    color =
+                        Color.White.copy(alpha = 0.14f)
                 ) {
                     Row(
                         modifier = Modifier.padding(
                             horizontal = 11.dp,
                             vertical = 7.dp
                         ),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment =
+                            Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(7.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Color.White
-                                )
+                                .clip(shape = CircleShape)
+                                .background(Color.White)
                         )
 
-                        Spacer(Modifier.width(7.dp))
+                        Spacer(
+                            modifier = Modifier.width(7.dp)
+                        )
 
                         Text(
-                            text = if (ready) {
-                                "All systems ready"
-                            } else {
-                                "Review protection"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            text =
+                                if (ready) {
+                                    "All systems ready"
+                                } else {
+                                    "Review protection"
+                                },
+                            style =
+                                MaterialTheme.typography
+                                    .labelMedium,
+                            fontWeight =
+                                FontWeight.SemiBold,
                             color = Color.White
                         )
                     }
                 }
 
-                // Action area
                 if (!ready) {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(
+                        modifier = Modifier.height(16.dp)
+                    )
 
                     Button(
                         onClick = onAction,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp),
-                        shape = RoundedCornerShape(16.dp)
+                        shape =
+                            RoundedCornerShape(16.dp)
                     ) {
                         Text(
                             text = "Review protection",
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight =
+                                FontWeight.SemiBold
                         )
 
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(
+                            modifier = Modifier.width(6.dp)
+                        )
 
                         Icon(
-                            imageVector = Icons.Default.ChevronRight,
+                            imageVector =
+                                Icons.Default.ChevronRight,
                             contentDescription = null,
                             modifier = Modifier.size(19.dp)
                         )
@@ -461,11 +792,10 @@ private fun DashboardTile(
                 .height(112.dp)
                 .padding(14.dp)
         ) {
-
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
+                    .clip(shape = CircleShape)
                     .background(
                         Brush.linearGradient(
                             listOf(
@@ -475,7 +805,8 @@ private fun DashboardTile(
                             )
                         )
                     ),
-                contentAlignment = Alignment.Center
+                contentAlignment =
+                    Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
@@ -496,13 +827,17 @@ private fun DashboardTile(
                 Text(
                     text = title,
                     style =
-                        MaterialTheme.typography.titleMedium,
+                        MaterialTheme.typography
+                            .titleMedium,
                     fontWeight = FontWeight.Bold,
                     color =
-                        MaterialTheme.colorScheme.onSurface
+                        MaterialTheme.colorScheme
+                            .onSurface
                 )
 
-                Spacer(Modifier.height(3.dp))
+                Spacer(
+                    modifier = Modifier.height(3.dp)
+                )
 
                 Text(
                     text = subtitle,
@@ -548,7 +883,6 @@ private fun SecurityFirstCard(
         Column(
             modifier = Modifier.padding(20.dp)
         ) {
-
             Row(
                 verticalAlignment =
                     Alignment.CenterVertically
@@ -556,13 +890,14 @@ private fun SecurityFirstCard(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(CircleShape)
+                        .clip(shape = CircleShape)
                         .background(
                             MaterialTheme.colorScheme
                                 .primary
                                 .copy(alpha = 0.10f)
                         ),
-                    contentAlignment = Alignment.Center
+                    contentAlignment =
+                        Alignment.Center
                 ) {
                     Icon(
                         imageVector =
@@ -574,7 +909,9 @@ private fun SecurityFirstCard(
                     )
                 }
 
-                Spacer(Modifier.width(14.dp))
+                Spacer(
+                    modifier = Modifier.width(14.dp)
+                )
 
                 Column(
                     modifier = Modifier.weight(1f)
@@ -582,17 +919,21 @@ private fun SecurityFirstCard(
                     Text(
                         text = "Security first",
                         style =
-                            MaterialTheme.typography.titleLarge,
+                            MaterialTheme.typography
+                                .titleLarge,
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(
+                        modifier = Modifier.height(2.dp)
+                    )
 
                     Text(
                         text =
                             "The lock engine is independent of monetization.",
                         style =
-                            MaterialTheme.typography.bodySmall,
+                            MaterialTheme.typography
+                                .bodySmall,
                         color =
                             MaterialTheme.colorScheme
                                 .onSurfaceVariant
@@ -609,7 +950,9 @@ private fun SecurityFirstCard(
                 )
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
 
             Text(
                 text =
@@ -621,7 +964,9 @@ private fun SecurityFirstCard(
                         .onSurfaceVariant
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
 
             OutlinedButton(
                 onClick = onClick,
@@ -634,7 +979,9 @@ private fun SecurityFirstCard(
                     modifier = Modifier.size(18.dp)
                 )
 
-                Spacer(Modifier.width(7.dp))
+                Spacer(
+                    modifier = Modifier.width(7.dp)
+                )
 
                 Text("Review system access")
             }
@@ -642,7 +989,8 @@ private fun SecurityFirstCard(
     }
 }
 
-private fun applock.app.domain.SessionRule.displayName(): String =
+private fun applock.app.domain.SessionRule.displayName():
+    String =
     when (this) {
         applock.app.domain.SessionRule.IMMEDIATELY ->
             "Every launch"

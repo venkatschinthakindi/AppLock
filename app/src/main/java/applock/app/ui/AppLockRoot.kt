@@ -57,6 +57,7 @@ import applock.app.AppLockApplication
 import applock.app.ads.AdsConsentManager
 import applock.app.ads.BannerAd
 import applock.app.security.AppLockDeviceAdminReceiver
+import applock.app.security.ProtectionPolicy
 import applock.app.ui.components.AppDrawer
 import applock.app.ui.screens.AboutScreen
 import applock.app.ui.screens.AccessibilityDisclosureScreen
@@ -160,6 +161,16 @@ fun AppLockRoot(
                 deviceAdminComponent
             )
         )
+    }
+
+    /*
+     * Tracks whether the normal Protection Level screen is currently
+     * showing the Device Admin explanation before Android's confirmation UI.
+     *
+     * This is separate from the first-run Device Admin flow above.
+     */
+    var showProtectionAdminDisclosure by remember {
+        mutableStateOf(false)
     }
 
     val lifecycleOwner =
@@ -368,6 +379,40 @@ fun AppLockRoot(
 
                 firstRunStep =
                     FIRST_RUN_DONE
+            }
+        }
+
+    /*
+     * ------------------------------------------------------------------
+     * NORMAL PROTECTION LEVEL — DEVICE ADMIN LAUNCHER
+     * ------------------------------------------------------------------
+     *
+     * Used when the user changes Protection Level after first-run.
+     *
+     * IMPORTANT:
+     * Enhanced Protection is persisted only after Android confirms
+     * Device Admin is actually active.
+     *
+     * If the user cancels the Android confirmation screen, the current
+     * protection mode remains unchanged.
+     */
+    val protectionModeDeviceAdminLauncher =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts
+                    .StartActivityForResult()
+        ) {
+
+            deviceAdminActive =
+                devicePolicyManager.isAdminActive(
+                    deviceAdminComponent
+                )
+
+            if (
+                ProtectionPolicy
+                    .selectEnhancedIfAvailable(context)
+            ) {
+                showProtectionAdminDisclosure = false
             }
         }
 
@@ -805,6 +850,74 @@ fun AppLockRoot(
                                         SettingsScreen()
                                     }
 
+                                    "protection_mode" -> {
+
+                                        if (
+                                            showProtectionAdminDisclosure
+                                        ) {
+
+                                            DeviceAdminExplanationScreen(
+                                                onEnableProtection = {
+
+                                                    val intent =
+                                                        Intent(
+                                                            DevicePolicyManager
+                                                                .ACTION_ADD_DEVICE_ADMIN
+                                                        ).apply {
+
+                                                            putExtra(
+                                                                DevicePolicyManager
+                                                                    .EXTRA_DEVICE_ADMIN,
+                                                                deviceAdminComponent
+                                                            )
+
+                                                            putExtra(
+                                                                DevicePolicyManager
+                                                                    .EXTRA_ADD_EXPLANATION,
+                                                                "Enable AppLock device protection to strengthen the selected Enhanced Protection mode."
+                                                            )
+                                                        }
+
+                                                    protectionModeDeviceAdminLauncher
+                                                        .launch(intent)
+                                                },
+
+                                                onNotNow = {
+                                                    showProtectionAdminDisclosure =
+                                                        false
+                                                }
+                                            )
+
+                                        } else {
+
+                                            ProtectionModeSelectionScreen(
+                                                deviceAdminActive =
+                                                    deviceAdminActive,
+
+                                                onStandardSelected = {
+
+                                                    ProtectionPolicy
+                                                        .selectStandard(
+                                                            context
+                                                        )
+                                                },
+
+                                                onEnhancedSelected = {
+
+                                                    if (
+                                                        !ProtectionPolicy
+                                                            .selectEnhancedIfAvailable(
+                                                                context
+                                                            )
+                                                    ) {
+                                                        showProtectionAdminDisclosure =
+                                                            true
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+
                                     "security" -> {
 
                                         SecuritySetupScreen()
@@ -882,6 +995,9 @@ private fun screenTitle(
 
         "security" ->
             "Authentication"
+
+        "protection_mode" ->
+            "Protection Level"
 
         "about" ->
             "About AppLock"

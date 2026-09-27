@@ -1,5 +1,6 @@
 package applock.app.ui.components
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -27,7 +28,7 @@ import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
@@ -40,20 +41,19 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import applock.app.R
-import android.content.Context
-import android.graphics.drawable.Drawable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.core.graphics.drawable.toBitmap
+import applock.app.R
+import android.graphics.drawable.Drawable
 
 private const val PRIVACY_POLICY_URL =
     "https://thrinetratech.in/applock-privacy-policy"
@@ -75,7 +75,10 @@ fun AppDrawer(
                 .fillMaxHeight()
                 .verticalScroll(scrollState)
                 .navigationBarsPadding()
-                .padding(top = 18.dp, bottom = 18.dp)
+                .padding(
+                    top = 18.dp,
+                    bottom = 18.dp
+                )
         ) {
             DrawerHeader()
 
@@ -115,6 +118,11 @@ fun AppDrawer(
                     Icons.Default.Security
                 ),
                 Triple(
+                    "protection_mode",
+                    "Protection Level",
+                    Icons.Default.Shield
+                ),
+                Triple(
                     "settings",
                     "Settings",
                     Icons.Default.Settings
@@ -126,11 +134,12 @@ fun AppDrawer(
                     label = {
                         Text(
                             text = label,
-                            fontWeight = if (currentDestination == key) {
-                                FontWeight.SemiBold
-                            } else {
-                                FontWeight.Normal
-                            }
+                            fontWeight =
+                                if (currentDestination == key) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                }
                         )
                     },
                     icon = {
@@ -139,7 +148,8 @@ fun AppDrawer(
                             contentDescription = null
                         )
                     },
-                    selected = currentDestination == key,
+                    selected =
+                        currentDestination == key,
                     onClick = {
                         onDestination(key)
                     },
@@ -167,7 +177,6 @@ fun AppDrawer(
                 )
             )
 
-            // Privacy Policy
             NavigationDrawerItem(
                 label = {
                     Text(
@@ -198,7 +207,6 @@ fun AppDrawer(
                 )
             )
 
-            // Support
             NavigationDrawerItem(
                 label = {
                     Text(
@@ -208,7 +216,8 @@ fun AppDrawer(
                 },
                 icon = {
                     Icon(
-                        imageVector = Icons.Default.SupportAgent,
+                        imageVector =
+                            Icons.Default.SupportAgent,
                         contentDescription = null
                     )
                 },
@@ -218,7 +227,9 @@ fun AppDrawer(
                         context.startActivity(
                             Intent(
                                 Intent.ACTION_SENDTO,
-                                Uri.parse("mailto:$SUPPORT_EMAIL")
+                                Uri.parse(
+                                    "mailto:$SUPPORT_EMAIL"
+                                )
                             ).apply {
                                 putExtra(
                                     Intent.EXTRA_SUBJECT,
@@ -234,16 +245,16 @@ fun AppDrawer(
                 )
             )
 
-            // About
             NavigationDrawerItem(
                 label = {
                     Text(
                         text = "About AppLock",
-                        fontWeight = if (currentDestination == "about") {
-                            FontWeight.SemiBold
-                        } else {
-                            FontWeight.Normal
-                        }
+                        fontWeight =
+                            if (currentDestination == "about") {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Normal
+                            }
                     )
                 },
                 icon = {
@@ -252,7 +263,8 @@ fun AppDrawer(
                         contentDescription = null
                     )
                 },
-                selected = currentDestination == "about",
+                selected =
+                    currentDestination == "about",
                 onClick = {
                     onDestination("about")
                 },
@@ -293,21 +305,27 @@ private fun shareApp(context: Context) {
     val playStoreLink =
         "https://play.google.com/store/apps/details?id=${context.packageName}"
 
-    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(
-            Intent.EXTRA_SUBJECT,
-            "AppLock – Private App Locker"
-        )
-        putExtra(
-            Intent.EXTRA_TEXT,
-            "I've been using AppLock to keep my apps private — thought you might like it too!\n\n$playStoreLink"
-        )
-    }
+    val shareIntent =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+
+            putExtra(
+                Intent.EXTRA_SUBJECT,
+                "AppLock – Private App Locker"
+            )
+
+            putExtra(
+                Intent.EXTRA_TEXT,
+                "I've been using AppLock to keep my apps private — thought you might like it too!\n\n$playStoreLink"
+            )
+        }
 
     runCatching {
         context.startActivity(
-            Intent.createChooser(shareIntent, "Share AppLock")
+            Intent.createChooser(
+                shareIntent,
+                "Share AppLock"
+            )
         )
     }
 }
@@ -318,14 +336,20 @@ private fun ShareAppSection(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement =
+            Arrangement.spacedBy(8.dp)
     ) {
         Text(
             text = "SHARE",
-            style = MaterialTheme.typography.labelMedium,
+            style =
+                MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp)
+            color =
+                MaterialTheme.colorScheme
+                    .onSurfaceVariant,
+            modifier = Modifier.padding(
+                horizontal = 20.dp
+            )
         )
 
         Card(
@@ -334,8 +358,10 @@ private fun ShareAppSection(
                 .padding(horizontal = 16.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    .copy(alpha = 0.72f)
+                containerColor =
+                    MaterialTheme.colorScheme
+                        .surfaceVariant
+                        .copy(alpha = 0.72f)
             ),
             elevation = CardDefaults.cardElevation(
                 defaultElevation = 1.dp
@@ -343,20 +369,27 @@ private fun ShareAppSection(
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement =
+                    Arrangement.spacedBy(12.dp)
             ) {
                 ShareAppIdentity()
 
                 Text(
-                    text = "Help a friend keep their apps private too — share the official link so they get the real app.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text =
+                        "Help a friend keep their apps private too — share the official link so they get the real app.",
+                    style =
+                        MaterialTheme.typography.bodyMedium,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onSurfaceVariant
                 )
 
                 Button(
                     onClick = onShare,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp)
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    shape =
+                        RoundedCornerShape(14.dp)
                 ) {
                     Text("Share with friends")
                 }
@@ -369,26 +402,29 @@ private fun ShareAppSection(
 private fun ShareAppIdentity() {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        verticalAlignment =
+            Alignment.CenterVertically,
+        horizontalArrangement =
+            Arrangement.spacedBy(12.dp)
     ) {
         Card(
             modifier = Modifier.size(64.dp),
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor =
+                    MaterialTheme.colorScheme.surface
             )
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
-                contentAlignment = Alignment.Center
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment =
+                    Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Share,
                     contentDescription = "Share",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint =
+                        MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .size(64.dp)
                         .padding(18.dp)
@@ -398,18 +434,23 @@ private fun ShareAppIdentity() {
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = "Enjoying AppLock?",
-                style = MaterialTheme.typography.titleMedium,
+                style =
+                    MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
                 text = "Spread the word",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style =
+                    MaterialTheme.typography.bodySmall,
+                color =
+                    MaterialTheme.colorScheme
+                        .onSurfaceVariant
             )
         }
     }
@@ -421,9 +462,10 @@ private fun AppLockIconPainter(): BitmapPainter {
 
     return remember(context) {
         val drawable: Drawable =
-            context.packageManager.getApplicationIcon(
-                context.applicationInfo
-            )
+            context.packageManager
+                .getApplicationIcon(
+                    context.applicationInfo
+                )
 
         BitmapPainter(
             drawable
@@ -442,30 +484,39 @@ private fun DrawerHeader() {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        verticalAlignment =
+            Alignment.CenterVertically,
+        horizontalArrangement =
+            Arrangement.spacedBy(12.dp)
     ) {
         Image(
             painter = AppLockIconPainter(),
             contentDescription = "AppLock logo",
-            modifier = Modifier
-                .size(52.dp)
+            modifier = Modifier.size(52.dp)
         )
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(5.dp)
         ) {
             Text(
-                text = "AppLock – Private App Locker",
-                style = MaterialTheme.typography.headlineSmall,
+                text =
+                    "AppLock – Private App Locker",
+                style =
+                    MaterialTheme.typography
+                        .headlineSmall,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "Fast protection. Beautiful unlocking.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text =
+                    "Fast protection. Beautiful unlocking.",
+                style =
+                    MaterialTheme.typography.bodyMedium,
+                color =
+                    MaterialTheme.colorScheme
+                        .onSurfaceVariant
             )
         }
     }
@@ -477,14 +528,20 @@ private fun SponsorSection(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement =
+            Arrangement.spacedBy(8.dp)
     ) {
         Text(
             text = "SPONSORED",
-            style = MaterialTheme.typography.labelMedium,
+            style =
+                MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp)
+            color =
+                MaterialTheme.colorScheme
+                    .onSurfaceVariant,
+            modifier = Modifier.padding(
+                horizontal = 20.dp
+            )
         )
 
         Card(
@@ -493,8 +550,10 @@ private fun SponsorSection(
                 .padding(horizontal = 16.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    .copy(alpha = 0.72f)
+                containerColor =
+                    MaterialTheme.colorScheme
+                        .surfaceVariant
+                        .copy(alpha = 0.72f)
             ),
             elevation = CardDefaults.cardElevation(
                 defaultElevation = 1.dp
@@ -502,20 +561,27 @@ private fun SponsorSection(
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement =
+                    Arrangement.spacedBy(12.dp)
             ) {
                 SponsorIdentity()
 
                 Text(
-                    text = "Useful tools for everyday tasks, available online.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text =
+                        "Useful tools for everyday tasks, available online.",
+                    style =
+                        MaterialTheme.typography.bodyMedium,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onSurfaceVariant
                 )
 
                 Button(
                     onClick = onVisit,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp)
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    shape =
+                        RoundedCornerShape(14.dp)
                 ) {
                     Text("Visit Atoolix")
                 }
@@ -528,21 +594,23 @@ private fun SponsorSection(
 private fun SponsorIdentity() {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        verticalAlignment =
+            Alignment.CenterVertically,
+        horizontalArrangement =
+            Arrangement.spacedBy(12.dp)
     ) {
         Card(
             modifier = Modifier.size(64.dp),
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor =
+                    MaterialTheme.colorScheme.surface
             )
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
-                contentAlignment = Alignment.Center
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment =
+                    Alignment.Center
             ) {
                 Image(
                     painter = painterResource(
@@ -552,25 +620,31 @@ private fun SponsorIdentity() {
                     modifier = Modifier
                         .size(64.dp)
                         .padding(7.dp),
-                    contentScale = ContentScale.Fit
+                    contentScale =
+                        ContentScale.Fit
                 )
             }
         }
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = "Atoolix",
-                style = MaterialTheme.typography.titleMedium,
+                style =
+                    MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
                 text = "Practical online tools",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style =
+                    MaterialTheme.typography.bodySmall,
+                color =
+                    MaterialTheme.colorScheme
+                        .onSurfaceVariant
             )
         }
     }
