@@ -1,23 +1,25 @@
 package applock.app.security
 
-import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.util.Log
 
+/**
+ * Central authority for AppLock's Device Owner / package-suspension capability.
+ *
+ * IMPORTANT:
+ * - Device Admin != Device Owner.
+ * - Package suspension requires Device Owner/Profile Owner privileges.
+ * - This class never assumes those privileges exist.
+ * - All policy operations fail closed and are logged.
+ */
 object DeviceOwnerProvisioningManager {
 
-    private const val TAG = "AppLockDeviceOwner"
+    private const val TAG = "AppLockDiag"
 
-    const val REQUEST_CODE_PROVISIONING = 4101
-
-    const val ACTION_PROVISION_MANAGED_DEVICE =
-        "android.app.action.PROVISION_MANAGED_DEVICE"
-
-    private fun getDevicePolicyManager(
+    private fun devicePolicyManager(
         context: Context
     ): DevicePolicyManager {
         return context.getSystemService(
@@ -25,7 +27,7 @@ object DeviceOwnerProvisioningManager {
         )
     }
 
-    fun getAdminComponent(
+    private fun adminComponent(
         context: Context
     ): ComponentName {
         return ComponentName(
@@ -34,34 +36,19 @@ object DeviceOwnerProvisioningManager {
         )
     }
 
+    /**
+     * True only when AppLock is actually Device Owner.
+     */
     fun isDeviceOwner(
         context: Context
     ): Boolean {
         return try {
-            getDevicePolicyManager(context)
+            devicePolicyManager(context)
                 .isDeviceOwnerApp(context.packageName)
         } catch (t: Throwable) {
-            Log.w(
+            Log.e(
                 TAG,
-                "Unable to determine Device Owner state",
-                t
-            )
-            false
-        }
-    }
-
-    fun isDeviceAdmin(
-        context: Context
-    ): Boolean {
-        return try {
-            getDevicePolicyManager(context)
-                .isAdminActive(
-                    getAdminComponent(context)
-                )
-        } catch (t: Throwable) {
-            Log.w(
-                TAG,
-                "Unable to determine Device Admin state",
+                "Device Owner state check failed",
                 t
             )
             false
@@ -69,143 +56,224 @@ object DeviceOwnerProvisioningManager {
     }
 
     /**
-     * Logs the complete current provisioning/security state.
-     *
-     * MainActivity calls this during startup so we can distinguish:
-     * - Device Owner
-     * - Device Admin
-     * - neither
+     * True when AppLock is Device Owner OR Profile Owner.
      */
-    fun logCurrentState(
-        context: Context
-    ) {
-        val deviceOwner = isDeviceOwner(context)
-        val deviceAdmin = isDeviceAdmin(context)
-
-        Log.i(
-            TAG,
-            "Current state: " +
-                "package=${context.packageName}, " +
-                "deviceOwner=$deviceOwner, " +
-                "deviceAdmin=$deviceAdmin"
-        )
-    }
-
-    fun canStartProvisioning(
+    fun isPolicyOwner(
         context: Context
     ): Boolean {
-
-        if (
-            Build.VERSION.SDK_INT <
-            Build.VERSION_CODES.LOLLIPOP
-        ) {
-            return false
-        }
-
-        if (isDeviceOwner(context)) {
-            return false
-        }
-
-        val intent = Intent(
-            ACTION_PROVISION_MANAGED_DEVICE
-        ).apply {
-            putExtra(
-                DevicePolicyManager.EXTRA_DEVICE_ADMIN,
-                getAdminComponent(context)
-            )
-        }
-
-        return intent.resolveActivity(
-            context.packageManager
-        ) != null
-    }
-
-    fun startProvisioning(
-        activity: Activity
-    ): Boolean {
-
-        if (
-            Build.VERSION.SDK_INT <
-            Build.VERSION_CODES.LOLLIPOP
-        ) {
-            Log.w(
-                TAG,
-                "Device Owner provisioning requires Android 5.0+"
-            )
-            return false
-        }
-
-        if (isDeviceOwner(activity)) {
-            Log.d(
-                TAG,
-                "Application is already Device Owner"
-            )
-            return false
-        }
-
-        val intent = Intent(
-            ACTION_PROVISION_MANAGED_DEVICE
-        ).apply {
-            putExtra(
-                DevicePolicyManager.EXTRA_DEVICE_ADMIN,
-                getAdminComponent(activity)
-            )
-        }
-
-        if (
-            intent.resolveActivity(
-                activity.packageManager
-            ) == null
-        ) {
-            Log.w(
-                TAG,
-                "No Device Owner provisioning activity available"
-            )
-            return false
-        }
-
         return try {
-            Log.i(
-                TAG,
-                "Starting Device Owner provisioning"
-            )
+            val dpm = devicePolicyManager(context)
 
-            activity.startActivityForResult(
-                intent,
-                REQUEST_CODE_PROVISIONING
-            )
-
-            true
+            dpm.isDeviceOwnerApp(context.packageName) ||
+                dpm.isProfileOwnerApp(context.packageName)
         } catch (t: Throwable) {
             Log.e(
                 TAG,
-                "Unable to start Device Owner provisioning",
+                "Policy owner state check failed",
                 t
             )
             false
         }
     }
 
-    fun handleProvisioningResult(
+    /**
+     * Returns a concise diagnostic state.
+     */
+    fun logCurrentState(
+        context: Context
+    ) {
+        try {
+            val dpm = devicePolicyManager(context)
+
+            val deviceOwner =
+                dpm.isDeviceOwnerApp(context.packageName)
+
+            val profileOwner =
+                dpm.isProfileOwnerApp(context.packageName)
+
+            Log.d(
+                TAG,
+                "DevicePolicy state: " +
+                    "package=${context.packageName} " +
+                    "deviceOwner=$deviceOwner " +
+                    "profileOwner=$profileOwner " +
+                    "sdk=${Build.VERSION.SDK_INT}"
+            )
+        } catch (t: Throwable) {
+            Log.e(
+                TAG,
+                "Unable to read DevicePolicy state",
+                t
+            )
+        }
+    }
+
+    /**
+     * Suspends one protected application.
+     *
+     * Returns true only if Android accepted the suspension request
+     * without reporting the package as failed.
+     */
+    fun suspendPackage(
         context: Context,
-        requestCode: Int
+        packageName: String
     ): Boolean {
 
-        if (
-            requestCode !=
-            REQUEST_CODE_PROVISIONING
-        ) {
+        if (packageName.isBlank()) {
+            Log.w(
+                TAG,
+                "suspendPackage rejected: blank package"
+            )
             return false
         }
 
-        val owner = isDeviceOwner(context)
+        if (!isPolicyOwner(context)) {
+            Log.w(
+                TAG,
+                "suspendPackage rejected: AppLock is not " +
+                    "Device/Profile Owner pkg=$packageName"
+            )
+            return false
+        }
 
-        Log.i(
-            TAG,
-            "Provisioning result: " +
-                "isDeviceOwner=$owner"
+        return try {
+            val dpm = devicePolicyManager(context)
+            val admin = adminComponent(context)
+
+            val failed =
+                dpm.setPackagesSuspended(
+                    admin,
+                    arrayOf(packageName),
+                    true
+                )
+
+            val success =
+                !failed.contains(packageName)
+
+            Log.d(
+                TAG,
+                "suspendPackage pkg=$packageName " +
+                    "success=$success " +
+                    "failed=${failed.joinToString()}"
+            )
+
+            success
+        } catch (t: Throwable) {
+            Log.e(
+                TAG,
+                "suspendPackage failed pkg=$packageName",
+                t
+            )
+            false
+        }
+    }
+
+    /**
+     * Unsuspends one protected application after successful authentication.
+     */
+    fun unsuspendPackage(
+        context: Context,
+        packageName: String
+    ): Boolean {
+
+        if (packageName.isBlank()) {
+            Log.w(
+                TAG,
+                "unsuspendPackage rejected: blank package"
+            )
+            return false
+        }
+
+        if (!isPolicyOwner(context)) {
+            Log.w(
+                TAG,
+                "unsuspendPackage rejected: AppLock is not " +
+                    "Device/Profile Owner pkg=$packageName"
+            )
+            return false
+        }
+
+        return try {
+            val dpm = devicePolicyManager(context)
+            val admin = adminComponent(context)
+
+            val failed =
+                dpm.setPackagesSuspended(
+                    admin,
+                    arrayOf(packageName),
+                    false
+                )
+
+            val success =
+                !failed.contains(packageName)
+
+            Log.d(
+                TAG,
+                "unsuspendPackage pkg=$packageName " +
+                    "success=$success " +
+                    "failed=${failed.joinToString()}"
+            )
+
+            success
+        } catch (t: Throwable) {
+            Log.e(
+                TAG,
+                "unsuspendPackage failed pkg=$packageName",
+                t
+            )
+            false
+        }
+    }
+
+    /**
+     * Reads whether Android currently reports this package suspended.
+     */
+    fun isPackageSuspended(
+        context: Context,
+        packageName: String
+    ): Boolean {
+        return try {
+            context.packageManager
+                .isPackageSuspended(packageName)
+        } catch (t: Throwable) {
+            Log.e(
+                TAG,
+                "isPackageSuspended failed pkg=$packageName",
+                t
+            )
+            false
+        }
+    }
+
+    /**
+     * Re-establishes the desired locked state after process/service
+     * recovery.
+     */
+    fun enforceSuspended(
+        context: Context,
+        packageName: String
+    ): Boolean {
+
+        if (!isPolicyOwner(context)) {
+            Log.w(
+                TAG,
+                "enforceSuspended skipped: no policy-owner authority " +
+                    "pkg=$packageName"
+            )
+            return false
+        }
+
+        if (isPackageSuspended(context, packageName)) {
+            Log.d(
+                TAG,
+                "enforceSuspended already active pkg=$packageName"
+            )
+            return true
+        }
+
+        return suspendPackage(
+            context,
+            packageName
         )
-
-        return owner
     }
 }
