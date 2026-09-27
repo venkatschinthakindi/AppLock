@@ -17,55 +17,37 @@ import applock.app.ui.ProtectionModeState
  * re-enabled without changing the existing AppLock locking configuration.
  */
 object ProtectionPolicy {
-
     data class Status(
         val selectedMode: ProtectionModeState.Mode,
         val deviceAdminActive: Boolean
     ) {
         val enhancedSelected: Boolean
             get() = selectedMode == ProtectionModeState.Mode.ENHANCED
-
         val enhancedEnforced: Boolean
             get() = enhancedSelected && deviceAdminActive
-
         val enhancedNeedsDeviceAdmin: Boolean
             get() = enhancedSelected && !deviceAdminActive
     }
 
     fun deviceAdminComponent(context: Context): ComponentName =
-        ComponentName(
-            context,
-            AppLockDeviceAdminReceiver::class.java
-        )
+        ComponentName(context, AppLockDeviceAdminReceiver::class.java)
 
     fun isDeviceAdminActive(context: Context): Boolean =
-        context
-            .getSystemService(DevicePolicyManager::class.java)
+        context.getSystemService(DevicePolicyManager::class.java)
             ?.isAdminActive(deviceAdminComponent(context)) == true
 
-    fun status(context: Context): Status =
-        Status(
-            selectedMode = ProtectionModeState.get(context),
-            deviceAdminActive = isDeviceAdminActive(context)
-        )
+    fun status(context: Context): Status = Status(
+        selectedMode = ProtectionModeState.get(context),
+        deviceAdminActive = isDeviceAdminActive(context)
+    )
 
     fun selectStandard(context: Context) {
-        ProtectionModeState.set(
-            context,
-            ProtectionModeState.Mode.STANDARD
-        )
+        ProtectionModeState.set(context, ProtectionModeState.Mode.STANDARD)
     }
 
-    /**
-     * Select Enhanced only after Android confirms Device Admin is active.
-     */
     fun selectEnhancedIfAvailable(context: Context): Boolean {
         if (!isDeviceAdminActive(context)) return false
-
-        ProtectionModeState.set(
-            context,
-            ProtectionModeState.Mode.ENHANCED
-        )
+        ProtectionModeState.set(context, ProtectionModeState.Mode.ENHANCED)
         return true
     }
 
