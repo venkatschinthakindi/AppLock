@@ -27,6 +27,8 @@ import applock.app.security.AntiTamperManager
 import applock.app.security.AntiTamperPolicy
 import applock.app.ui.lock.LockActivity
 import applock.app.ui.lock.SecurityGateActivity
+import applock.app.security.EnhancedProtectionManager
+import applock.app.security.ProtectionPolicy
 
 /**
  * Foreground protected-app enforcement.
@@ -807,296 +809,239 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     }
 
     // --------------------------------------------------------- foreground path
+private fun handleForeground(
+    pkg: String,
+    className: CharSequence?,
+    eventType: Int
+) {
+    // Never make a protection decision from an uninitialized snapshot.
+    // The early barrier has already been installed before this call.
+    if (!ensureProtectionSnapshotInitialized()) {
+        /*
+         * Do not paint a global white screen while the protected-app
+         * snapshot is unavailable. Refresh synchronously; if it still
+         * cannot be loaded, leave the real app visible and let the next
+         * reconciliation retry.
+         */
+        armWatchdog()
+        return
+    }
 
-    private fun handleForeground(
-        pkg: String,
-        className: CharSequence?,
-        eventType: Int
+    android.util.Log.d(
+        "AppLockDiag",
+        "handleForeground pkg=$pkg class=$className eventType=$eventType " +
+            "lastForeground=$lastForegroundPackage " +
+            "pendingPkg=${pending?.packageName} " +
+            "pendingReqId=${pending?.requestId} " +
+            "authorizedForLaunch=${app.lockEngine.sessionPackage()}"
+    )
+
+    /*
+     * V8 PERFORMANCE RULE
+     *
+     * Ordinary protected-app launches should not enter the expensive
+     * management accessibility-tree path.
+     *
+     * First perform the cheap package-level check. Only if the package
+     * is a possible management surface do we inspect the accessibility
+     * tree.
+     */
+    if (pkg != packageName) {
+        val managementCandidate =
+            AntiTamperPolicy.isManagementSurface(
+                packageName = pkg,
+                eventType = eventType,
+                className = className
+            )
+
+        if (managementCandidate) {
+            val isManagement =
+                isAppLockManagementTarget(
+                    pkg = pkg,
+                    className = className
+                )
+
+            android.util.Log.d(
+                "AppLockDiag",
+                "isManagementSurface pkg=$pkg class=$className -> $isManagement " +
+                    "(managementGraceActive=" +
+                    "${managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime()})"
+            )
+
+            if (
+                isManagement &&
+                managementAuthorizedUntilElapsed >
+                    SystemClock.elapsedRealtime()
+            ) {
+                lastForegroundPackage = pkg
+                return
+            }
+
+            if (!isManagement) {
+                managementAuthorizedUntilElapsed = 0L
+            }
+
+            if (
+                isManagement &&
+                app.repository.authenticationConfigured()
+            ) {
+                handleManagementSurface(pkg)
+                lastForegroundPackage = pkg
+                return
+            }
+        } else {
+            /*
+             * A non-management foreign package cannot legitimately
+             * continue an old management grace period.
+             */
+            managementAuthorizedUntilElapsed = 0L
+        }
+    }
+
+    /*
+     * Once a departure candidate exists, raw accessibility events from
+     * the old package are not authoritative.
+     */
+    provisionalDeparturePackage?.let { candidate ->
+        val resolved =
+            resolveVisiblePackages()
+
+        val primary =
+            resolved.windowsPrimary
+                ?: resolved.usageStatsPrimary
+
+        if (
+            primary == candidate &&
+            pkg == candidate
+        ) {
+            cancelProvisionalDeparture(candidate)
+        } else {
+            return
+        }
+    }
+
+    /*
+     * Refresh protection state periodically instead of on every
+     * accessibility event.
+     *
+     * The V8 early barrier has already been installed before reaching
+     * this point.
+     */
+    val nowElapsed =
+        SystemClock.elapsedRealtime()
+
+    if (
+        nowElapsed - lastProtectionRefreshElapsed >=
+            PROTECTION_REFRESH_INTERVAL_MS
     ) {
-        // Never make a protection decision from an uninitialized snapshot.
-        // The early barrier has already been installed before this call.
-        if (!ensureProtectionSnapshotInitialized()) {
-            // Do not paint a global white screen while the protected-app
-            // snapshot is unavailable. Refresh synchronously; if it still
-            // cannot be loaded, leave the real app visible and let the next
-            // reconciliation retry.
+        lastProtectionRefreshElapsed = nowElapsed
+
+        app.repository.refreshProtectionState()
+        refreshProtectedPackageSnapshot()
+
+        AntiTamperManager.enforceStrongProtection(
+            this,
+            app.repository.protectedPackages()
+        )
+    }
+
+    val surfaceClassification =
+        ForegroundPolicy.classify(
+            context = this,
+            packageName = pkg,
+            className = className,
+            eventType = eventType,
+            ourPackage = packageName
+        )
+
+    android.util.Log.d(
+        "AppLockDiag",
+        "classify pkg=$pkg class=$className -> $surfaceClassification"
+    )
+
+    when (surfaceClassification) {
+
+        ForegroundPolicy.Surface.OUR_SECURITY_UI -> {
+            app.lockEngine.onSecurityUiVisible()
+
+            /*
+             * During service recovery, the fact that an AppLock Activity
+             * is visible is not sufficient to prove that it belongs to a
+             * live authentication transaction.
+             */
+            val securityRequest = pending
+
+            if (securityRequest != null) {
+                if (securityRequest.lockUiVisible) {
+                    // Never overlay an existing LockActivity.
+                    removeProtectionOverlay()
+                } else {
+                    showProtectionOverlay(
+                        barrierPackage = securityRequest.packageName
+                    )
+                }
+            } else {
+                removeProtectionOverlay()
+            }
+
             armWatchdog()
             return
         }
 
-        android.util.Log.d(
-            "AppLockDiag",
-            "handleForeground pkg=$pkg class=$className eventType=$eventType " +
-                "lastForeground=$lastForegroundPackage " +
-                "pendingPkg=${pending?.packageName} " +
-                "pendingReqId=${pending?.requestId} " +
-                "authorizedForLaunch=${app.lockEngine.sessionPackage()}"
-        )
-
-        /*
-         * V8 PERFORMANCE RULE
-         *
-         * Ordinary protected-app launches should not enter the expensive
-         * management accessibility-tree path.
-         *
-         * First perform the cheap package-level check. Only if the package
-         * is a possible management surface do we inspect the accessibility
-         * tree.
-         */
-        if (pkg != packageName) {
-            val managementCandidate =
-                AntiTamperPolicy.isManagementSurface(
-                    packageName = pkg,
-                    eventType = eventType,
-                    className = className
-                )
-
-            if (managementCandidate) {
-                val isManagement =
-                    isAppLockManagementTarget(
-                        pkg = pkg,
-                        className = className
-                    )
-
-                android.util.Log.d(
-                    "AppLockDiag",
-                    "isManagementSurface pkg=$pkg class=$className -> $isManagement " +
-                        "(managementGraceActive=" +
-                        "${managementAuthorizedUntilElapsed > SystemClock.elapsedRealtime()})"
-                )
-
-                if (
-                    isManagement &&
-                    managementAuthorizedUntilElapsed >
-                        SystemClock.elapsedRealtime()
-                ) {
-                    lastForegroundPackage = pkg
-                    return
-                }
-
-                if (!isManagement) {
-                    managementAuthorizedUntilElapsed = 0L
-                }
-
-                if (
-                    isManagement &&
-                    app.repository.authenticationConfigured()
-                ) {
-                    handleManagementSurface(pkg)
-                    lastForegroundPackage = pkg
-                    return
-                }
-            } else {
-                /*
-                 * A non-management foreign package cannot legitimately
-                 * continue an old management grace period.
-                 */
-                managementAuthorizedUntilElapsed = 0L
-            }
-        }
-
-        /*
-         * Once a departure candidate exists, raw accessibility events from
-         * the old package are not authoritative.
-         */
-        provisionalDeparturePackage?.let { candidate ->
-            val resolved =
-                resolveVisiblePackages()
-
-            val primary =
-                resolved.windowsPrimary
-                    ?: resolved.usageStatsPrimary
-
-            if (
-                primary == candidate &&
-                pkg == candidate
-            ) {
-                cancelProvisionalDeparture(candidate)
-            } else {
-                return
-            }
-        }
-
-        /*
-         * Refresh protection state periodically instead of on every
-         * accessibility event.
-         *
-         * The V8 early barrier has already been installed before reaching
-         * this point.
-         */
-        val nowElapsed =
-            SystemClock.elapsedRealtime()
-
-        if (
-            nowElapsed - lastProtectionRefreshElapsed >=
-                PROTECTION_REFRESH_INTERVAL_MS
-        ) {
-            lastProtectionRefreshElapsed = nowElapsed
-
-            app.repository.refreshProtectionState()
-            refreshProtectedPackageSnapshot()
-
-            AntiTamperManager.enforceStrongProtection(
-                this,
-                app.repository.protectedPackages()
-            )
-        }
-
-        val surfaceClassification =
-            ForegroundPolicy.classify(
-                context = this,
-                packageName = pkg,
-                className = className,
-                eventType = eventType,
-                ourPackage = packageName
-            )
-
-        android.util.Log.d(
-            "AppLockDiag",
-            "classify pkg=$pkg class=$className -> $surfaceClassification"
-        )
-
-        when (surfaceClassification) {
-
-            ForegroundPolicy.Surface.OUR_SECURITY_UI -> {
-                app.lockEngine.onSecurityUiVisible()
-
-                /*
-                 * During service recovery, the fact that an AppLock Activity
-                 * is visible is not sufficient to prove that it belongs to a
-                 * live authentication transaction.
-                 */
-                val securityRequest = pending
-
-                if (securityRequest != null) {
-                    if (securityRequest.lockUiVisible) {
-                        // Never overlay an existing LockActivity.
-                        removeProtectionOverlay()
-                    } else {
-                        showProtectionOverlay(
-                            barrierPackage = securityRequest.packageName
-                        )
-                    }
-                } else {
-                    removeProtectionOverlay()
-                }
-
-                armWatchdog()
-                return
-            }
-
-            ForegroundPolicy.Surface.OUR_MAIN_UI -> {
-                handleAppLockMainUiShown()
-                return
-            }
-
-            ForegroundPolicy.Surface.NON_DEPARTURE -> {
-                app.lockEngine.onNonDepartureSurface()
-                armWatchdog()
-                return
-            }
-
-            ForegroundPolicy.Surface.DEPARTURE -> {
-                onUserLeft(pkg)
-                return
-            }
-
-            ForegroundPolicy.Surface.APP -> {
-                // Continue to ordinary protected-app handling.
-            }
-        }
-
-        /*
-         * Ordinary protected-app transition.
-         */
-        val previous =
-            lastForegroundPackage
-
-        val currentOwner =
-            pending?.packageName
-                ?: app.lockEngine.sessionPackage()
-                ?: previous?.takeIf {
-                    app.repository.isProtected(it)
-                }
-
-        if (
-            currentOwner != null &&
-            currentOwner != pkg &&
-            pkg != packageName
-        ) {
-            val active = pending
-            if (
-                active != null &&
-                isBiometricPromptActiveFor(
-                    active.packageName,
-                    active.requestId
-                )
-            ) {
-                scheduleProvisionalDepartureConfirmation(
-                    active.packageName
-                )
-
-                showProtectionOverlay(
-                    barrierPackage = active.packageName
-                )
-
-                android.util.Log.d(
-                    "AppLockDiag",
-                    "cross-package transition ignored during biometric " +
-                        "owner=${active.packageName} requestId=${active.requestId} " +
-                        "newPkg=$pkg biometricState=$biometricPromptState"
-                )
-
-                armWatchdog()
-                return
-            }
-
-            scheduleProvisionalDepartureConfirmation(currentOwner)
-
-            android.util.Log.d(
-                "AppLockDiag",
-                "deferred cross-package transition: " +
-                    "owner=$currentOwner newPkg=$pkg " +
-                    "pendingReqId=${pending?.requestId}"
-            )
-
+        ForegroundPolicy.Surface.OUR_MAIN_UI -> {
+            handleAppLockMainUiShown()
             return
         }
 
-        if (
-            previous != null &&
-            previous != pkg &&
-            app.repository.isProtected(previous)
-        ) {
-            // Leaving a protected app is a hard session boundary for the
-            // foreground authorization state. Do not carry the previously
-            // accepted package into the next launch.
-            app.repository.clearUnlock(previous)
+        ForegroundPolicy.Surface.NON_DEPARTURE -> {
+            app.lockEngine.onNonDepartureSurface()
+            armWatchdog()
+            return
         }
 
-        lastForegroundPackage = pkg
+        ForegroundPolicy.Surface.DEPARTURE -> {
+            onUserLeft(pkg)
+            return
+        }
 
-        val decision =
-            app.lockEngine.onForegroundApp(pkg)
-
-        applyDecision(decision)
+        ForegroundPolicy.Surface.APP -> {
+            // Continue to ordinary protected-app handling.
+        }
     }
 
-    // ------------------------------------------------------- departure path
+    /*
+     * ---------------------------------------------------------------
+     * Ordinary protected-app transition
+     * ---------------------------------------------------------------
+     */
+    val previous =
+        lastForegroundPackage
 
-    private fun onUserLeft(
-        pkg: String
+    val currentOwner =
+        pending?.packageName
+            ?: app.lockEngine.sessionPackage()
+            ?: previous?.takeIf {
+                app.repository.isProtected(it)
+            }
+
+    /*
+     * Existing active request/session is transitioning to another
+     * foreign package.
+     *
+     * Do NOT immediately destroy the authentication transaction because
+     * SystemUI / biometric / IME callbacks can temporarily appear as
+     * another foreground package.
+     */
+    if (
+        currentOwner != null &&
+        currentOwner != pkg &&
+        pkg != packageName
     ) {
-        /*
-         * A live authentication transaction must survive transient launcher,
-         * SystemUI, IME, or LockActivity callbacks, but a REAL departure must
-         * terminate the transaction.
-         */
         val active = pending
 
         if (
             active != null &&
-            app.lockEngine.isRequestActive(
+            isBiometricPromptActiveFor(
                 active.packageName,
                 active.requestId
             )
@@ -1109,83 +1054,341 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                 barrierPackage = active.packageName
             )
 
-            armWatchdog()
-
-            val biometricActive =
-                isBiometricPromptActiveFor(
-                    active.packageName,
-                    active.requestId
-                )
-
             android.util.Log.d(
                 "AppLockDiag",
-                "provisional departure during active auth " +
-                    "owner=${active.packageName} requestId=${active.requestId} " +
-                    "eventPkg=$pkg biometricActive=$biometricActive " +
+                "cross-package transition ignored during biometric " +
+                    "owner=${active.packageName} " +
+                    "requestId=${active.requestId} " +
+                    "newPkg=$pkg " +
                     "biometricState=$biometricPromptState"
             )
 
+            armWatchdog()
             return
         }
 
-        val previous =
-            lastForegroundPackage
+        scheduleProvisionalDepartureConfirmation(
+            currentOwner
+        )
 
-        val owner =
-            pending?.packageName
-                ?: app.lockEngine.sessionPackage()
-                ?: previous?.takeIf {
-                    app.repository.isProtected(it)
-                }
+        android.util.Log.d(
+            "AppLockDiag",
+            "deferred cross-package transition: " +
+                "owner=$currentOwner " +
+                "newPkg=$pkg " +
+                "pendingReqId=${pending?.requestId}"
+        )
 
-        if (
-            owner != null &&
-            owner != pkg
-        ) {
-            scheduleProvisionalDepartureConfirmation(owner)
-            armWatchdog()
+        return
+    }
 
-            android.util.Log.d(
-                "AppLockDiag",
-                "provisional departure: owner=$owner " +
-                    "eventPkg=$pkg pendingReqId=${pending?.requestId}"
+    /*
+     * ---------------------------------------------------------------
+     * ENHANCED OS BOUNDARY
+     * ---------------------------------------------------------------
+     *
+     * This MUST happen before LockEngine is allowed to create the
+     * authentication/launch transaction for a newly detected protected
+     * package.
+     *
+     * Standard Protection does not enter this block.
+     */
+    val protectedTarget =
+        app.repository.isProtected(pkg)
+
+    val enhancedEnforced =
+        protectedTarget &&
+            ProtectionPolicy.isEnhancedEnforced(this)
+
+    if (enhancedEnforced) {
+
+        android.util.Log.d(
+            "AppLockEnhanced",
+            "protected foreground detected; establishing OS boundary " +
+                "pkg=$pkg previous=$previous"
+        )
+
+        val suspensionResult =
+            EnhancedProtectionManager.suspendProtectedPackages(
+                context = this,
+                packages = setOf(pkg)
             )
 
+        android.util.Log.d(
+            "AppLockEnhanced",
+            "OS boundary result pkg=$pkg result=$suspensionResult"
+        )
+
+        if (
+            suspensionResult !=
+                EnhancedProtectionManager.Result.APPLIED
+        ) {
+            /*
+             * FAIL CLOSED.
+             *
+             * Enhanced Protection must never silently fall back to the
+             * Accessibility-only path. Otherwise the feature could claim
+             * OS-level protection while the target remains executable.
+             */
+            showProtectionOverlay(
+                barrierPackage = pkg
+            )
+
+            android.util.Log.e(
+                "AppLockEnhanced",
+                "FAIL CLOSED: unable to establish OS boundary " +
+                    "for protected package=$pkg " +
+                    "result=$suspensionResult"
+            )
+
+            armWatchdog()
             return
         }
 
-        finalizeUserLeft(
-            pkg = pkg,
-            previous = previous
-        )
+        /*
+         * The target is now suspended before LockEngine processes the
+         * protected-app transition.
+         *
+         * This is the important ordering that prevents the target app
+         * from becoming the visible activity while LockActivity is
+         * being established.
+         */
     }
 
-    private fun finalizeUserLeft(
-        pkg: String,
-        previous: String?
+    /*
+     * If the previous package was protected and we have genuinely
+     * transitioned away from it, clear its previous foreground unlock.
+     */
+    if (
+        previous != null &&
+        previous != pkg &&
+        app.repository.isProtected(previous)
     ) {
+        /*
+         * In Enhanced Protection, make sure the previous package is
+         * suspended again before clearing the old session.
+         *
+         * This is best-effort here; finalizeUserLeft() also restores the
+         * boundary when a real departure is confirmed.
+         */
         if (
-            previous != null &&
-            app.repository.isProtected(previous)
+            ProtectionPolicy.isEnhancedEnforced(this)
         ) {
-            app.repository.clearUnlock(previous)
+            val restoreResult =
+                EnhancedProtectionManager.restoreBoundary(
+                    context = this,
+                    packageName = previous
+                )
+
+            android.util.Log.d(
+                "AppLockEnhanced",
+                "previous protected package boundary restored " +
+                    "pkg=$previous result=$restoreResult"
+            )
         }
 
-        app.lockEngine.onUserLeftForeground()
+        // Leaving a protected app is a hard session boundary for the
+        // foreground authorization state. Do not carry the previously
+        // accepted package into the next launch.
+        app.repository.clearUnlock(previous)
+    }
 
-        lastForegroundPackage =
-            if (ForegroundPolicy.isLauncher(pkg)) {
-                pkg
-            } else {
-                null
+    lastForegroundPackage = pkg
+
+    /*
+     * Only now allow LockEngine to decide whether authentication is
+     * required and establish the request transaction.
+     */
+    val decision =
+        app.lockEngine.onForegroundApp(pkg)
+
+    applyDecision(decision)
+}
+    // ------------------------------------------------------- departure path
+
+    // ------------------------------------------------------- departure path
+
+private fun onUserLeft(
+    pkg: String
+) {
+    /*
+     * A live authentication transaction must survive transient launcher,
+     * SystemUI, IME, or LockActivity callbacks.
+     *
+     * In Enhanced Protection, the OS boundary remains the fail-closed
+     * protection while those transient callbacks are happening.
+     *
+     * A REAL departure is handled by finalizeUserLeft().
+     */
+    val active = pending
+
+    if (
+        active != null &&
+        app.lockEngine.isRequestActive(
+            active.packageName,
+            active.requestId
+        )
+    ) {
+        scheduleProvisionalDepartureConfirmation(
+            active.packageName
+        )
+
+        /*
+         * Keep the visual privacy barrier active while the authentication
+         * transaction is unresolved.
+         */
+        showProtectionOverlay(
+            barrierPackage = active.packageName
+        )
+
+        armWatchdog()
+
+        val biometricActive =
+            isBiometricPromptActiveFor(
+                active.packageName,
+                active.requestId
+            )
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "provisional departure during active auth " +
+                "owner=${active.packageName} " +
+                "requestId=${active.requestId} " +
+                "eventPkg=$pkg " +
+                "biometricActive=$biometricActive " +
+                "biometricState=$biometricPromptState"
+        )
+
+        /*
+         * DO NOT suspend/unsuspend here.
+         *
+         * Launcher/SystemUI/IME/biometric callbacks can temporarily look
+         * like a departure. The request is still alive, so changing the
+         * OS suspension state here could race the authentication handoff.
+         */
+        return
+    }
+
+    val previous =
+        lastForegroundPackage
+
+    val owner =
+        pending?.packageName
+            ?: app.lockEngine.sessionPackage()
+            ?: previous?.takeIf {
+                app.repository.isProtected(it)
             }
 
-        clearPending()
+    if (
+        owner != null &&
+        owner != pkg
+    ) {
+        scheduleProvisionalDepartureConfirmation(
+            owner
+        )
 
-        removeProtectionOverlay()
+        armWatchdog()
 
-        disarmWatchdogIfIdle()
+        android.util.Log.d(
+            "AppLockDiag",
+            "provisional departure: " +
+                "owner=$owner " +
+                "eventPkg=$pkg " +
+                "pendingReqId=${pending?.requestId}"
+        )
+
+        return
     }
+
+    finalizeUserLeft(
+        pkg = pkg,
+        previous = previous
+    )
+}
+
+private fun finalizeUserLeft(
+    pkg: String,
+    previous: String?
+) {
+    /*
+     * IMPORTANT:
+     *
+     * This is the REAL departure boundary.
+     *
+     * If Enhanced Protection is enforced, re-suspend the protected package
+     * BEFORE clearing the rest of the AppLock state.
+     *
+     * This prevents a previously authorized package from remaining
+     * unsuspended after the user has left AppLock / the protected task.
+     */
+    if (
+        ProtectionPolicy.isEnhancedEnforced(this)
+    ) {
+        val packagesToProtect =
+            buildSet {
+                if (
+                    previous != null &&
+                    app.repository.isProtected(previous)
+                ) {
+                    add(previous)
+                }
+
+                pending?.packageName
+                    ?.takeIf {
+                        app.repository.isProtected(it)
+                    }
+                    ?.let(::add)
+
+                app.lockEngine
+                    .sessionPackage()
+                    ?.takeIf {
+                        app.repository.isProtected(it)
+                    }
+                    ?.let(::add)
+            }
+
+        if (packagesToProtect.isNotEmpty()) {
+            val result =
+                EnhancedProtectionManager.restoreAllProtectedPackages(
+                    context = this,
+                    protectedPackages = packagesToProtect
+                )
+
+            android.util.Log.d(
+                "AppLockEnhanced",
+                "finalizeUserLeft: " +
+                    "restored OS boundary " +
+                    "packages=$packagesToProtect " +
+                    "result=$result"
+            )
+        }
+    }
+
+    /*
+     * Existing AppLock state cleanup.
+     */
+    if (
+        previous != null &&
+        app.repository.isProtected(previous)
+    ) {
+        app.repository.clearUnlock(previous)
+    }
+
+    app.lockEngine.onUserLeftForeground()
+
+    lastForegroundPackage =
+        if (ForegroundPolicy.isLauncher(pkg)) {
+            pkg
+        } else {
+            null
+        }
+
+    clearPending()
+
+    removeProtectionOverlay()
+
+    disarmWatchdogIfIdle()
+}
 
     // ------------------------------------------------ provisional departure
 

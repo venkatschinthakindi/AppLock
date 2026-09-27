@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
 import applock.app.service.AppDetectionAccessibilityService
+import applock.app.security.EnhancedProtectionManager
+import applock.app.security.ProtectionPolicy
 
 class LockActivity : FragmentActivity() {
 
@@ -552,139 +554,291 @@ class LockActivity : FragmentActivity() {
     // ---------------------------------------------------------------------
 
     private fun completeAuthentication(
-        targetPackage: String
+    targetPackage: String
+) {
+    if (authenticationCompleted) {
+        return
+    }
+
+    val app =
+        application as AppLockApplication
+
+    if (isFinishing || isDestroyed) {
+        return
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * PIN/Pattern/Biometric authentication completes the LockEngine
+     * transaction first. LockEngine invalidates the active request while
+     * preserving the exact one-shot launch authorization.
+     *
+     * Therefore the authoritative proof of successful authentication here
+     * is the exact package + requestId launch authorization.
+     */
+    if (
+        !app.lockEngine.hasLaunchAuthorization(
+            targetPackage,
+            requestId
+        )
     ) {
-
-        if (authenticationCompleted) {
-            return
-        }
-
-        val app =
-            application as AppLockApplication
-
-        if (isFinishing || isDestroyed) {
-            return
-        }
-
-        /*
-         * IMPORTANT:
-         *
-         * PIN/Pattern/Biometric authentication completes the LockEngine
-         * transaction first. LockEngine intentionally invalidates the active
-         * request at that point, while preserving the exact one-shot
-         * launch authorization.
-         *
-         * Therefore the post-authentication hand-off must NOT require
-         * isRequestActive() here. The authoritative proof of successful
-         * authentication is the exact package + requestId launch
-         * authorization created by LockEngine.
-         */
-        if (
-            !app.lockEngine.hasLaunchAuthorization(
-                targetPackage,
-                requestId
-            )
-        ) {
-            android.util.Log.w(
-                "AppLockDiag",
-                "Launch rejected: missing exact post-auth authorization " +
-                    "pkg=$targetPackage requestId=$requestId"
-            )
-
-            finishAndRemoveTask()
-            return
-        }
-
-        if (
-            !isValidTarget(
-                app,
-                targetPackage
-            )
-        ) {
-            app.lockEngine.cancelRequest(
-                targetPackage,
-                requestId
-            )
-
-            finishAndRemoveTask()
-            return
-        }
-
-        /*
-         * The PIN/biometric operation must already have authenticated this
-         * exact request.
-         *
-         * LockScreen should only invoke this callback after the corresponding
-         * LockEngine authentication method returned SUCCESS.
-         */
-        if (
-            !app.lockEngine.hasLaunchAuthorization(
-                targetPackage,
-                requestId
-            )
-        ) {
-            android.util.Log.w(
-                "AppLockDiag",
-                "Launch rejected: no exact launch authorization " +
-                    "pkg=$targetPackage requestId=$requestId"
-            )
-
-            finishAndRemoveTask()
-            return
-        }
-
-        val launchIntent =
-            packageManager.getLaunchIntentForPackage(
-                targetPackage
-            )
-
-        if (launchIntent == null) {
-            app.lockEngine.cancelRequest(
-                targetPackage,
-                requestId
-            )
-
-            finishAndRemoveTask()
-            return
-        }
-
-        /*
-         * Consume exact one-shot authorization BEFORE launching.
-         *
-         * If a stale callback runs again, the authorization is already gone.
-         */
-        if (
-            !app.lockEngine.consumeLaunchAuthorization(
-                targetPackage,
-                requestId
-            )
-        ) {
-            android.util.Log.w(
-                "AppLockDiag",
-                "Launch rejected: authorization already consumed " +
-                    "pkg=$targetPackage requestId=$requestId"
-            )
-
-            finishAndRemoveTask()
-            return
-        }
-
-        authenticationCompleted = true
-
-        AppDetectionAccessibilityService
-            .notifyAuthenticationSucceeded(
-                targetPackage,
-                requestId
-            )
-
-        launchIntent.addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK
+        android.util.Log.w(
+            "AppLockDiag",
+            "Launch rejected: missing exact post-auth authorization " +
+                "pkg=$targetPackage requestId=$requestId"
         )
 
-        startActivity(launchIntent)
+        finishAndRemoveTask()
+        return
+    }
+
+    /*
+     * Never release the OS boundary for an invalid/stale target.
+     */
+    if (
+        !isValidTarget(
+            app,
+            targetPackage
+        )
+    ) {
+        android.util.Log.w(
+            "AppLockDiag",
+            "Launch rejected: invalid target " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+
+        app.lockEngine.cancelRequest(
+            targetPackage,
+            requestId
+        )
 
         finishAndRemoveTask()
+        return
     }
+
+    /*
+     * Re-check the exact one-shot authorization immediately before
+     * performing the privileged hand-off.
+     *
+     * This protects against a stale biometric/PIN callback.
+     */
+    if (
+        !app.lockEngine.hasLaunchAuthorization(
+            targetPackage,
+            requestId
+        )
+    ) {
+        android.util.Log.w(
+            "AppLockDiag",
+            "Launch rejected: authorization disappeared " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+
+        finishAndRemoveTask()
+        return
+    }
+
+    val launchIntent =
+        packageManager.getLaunchIntentForPackage(
+            targetPackage
+        )
+
+    if (launchIntent == null) {
+        android.util.Log.w(
+            "AppLockDiag",
+            "Launch rejected: no launch intent " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+
+        app.lockEngine.cancelRequest(
+            targetPackage,
+            requestId
+        )
+
+        finishAndRemoveTask()
+        return
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * ENHANCED OS BOUNDARY
+     * ---------------------------------------------------------------
+     *
+     * Telegram/etc. is currently suspended.
+     *
+     * Only after the exact authentication transaction has been proven
+     * successful do we release the OS boundary.
+     *
+     * This MUST happen before consuming the authorization and before
+     * startActivity().
+     */
+    if (
+        ProtectionPolicy.isEnhancedEnforced(this) &&
+        app.repository.isProtected(targetPackage)
+    ) {
+        android.util.Log.d(
+            "AppLockEnhanced",
+            "authenticated launch: releasing OS boundary " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+
+        val osBoundaryReleased =
+            EnhancedProtectionManager.prepareAuthorizedLaunch(
+                context = this,
+                packageName = targetPackage
+            )
+
+        if (!osBoundaryReleased) {
+            /*
+             * FAIL CLOSED.
+             *
+             * Do not consume the authentication authorization if the
+             * protected package could not be safely released.
+             *
+             * This leaves the package protected at the OS layer.
+             */
+            android.util.Log.e(
+                "AppLockEnhanced",
+                "Launch rejected: OS boundary could not be released " +
+                    "pkg=$targetPackage requestId=$requestId"
+            )
+
+            finishAndRemoveTask()
+            return
+        }
+
+        /*
+         * Immediately verify that the package is actually no longer
+         * suspended before allowing the launch hand-off to continue.
+         */
+        if (
+            EnhancedProtectionManager.isSuspended(
+                context = this,
+                packageName = targetPackage
+            )
+        ) {
+            android.util.Log.e(
+                "AppLockEnhanced",
+                "Launch rejected: target remains suspended after " +
+                    "authorized release " +
+                    "pkg=$targetPackage requestId=$requestId"
+            )
+
+            /*
+             * Best effort restoration. The package is already protected,
+             * but this makes the intended state explicit.
+             */
+            EnhancedProtectionManager.restoreBoundary(
+                context = this,
+                packageName = targetPackage
+            )
+
+            finishAndRemoveTask()
+            return
+        }
+
+        android.util.Log.d(
+            "AppLockEnhanced",
+            "OS boundary successfully released " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * ONE-SHOT AUTHORIZATION
+     * ---------------------------------------------------------------
+     *
+     * Consume exact authorization BEFORE launching.
+     *
+     * A stale callback cannot launch the package a second time.
+     */
+    if (
+        !app.lockEngine.consumeLaunchAuthorization(
+            targetPackage,
+            requestId
+        )
+    ) {
+        /*
+         * The package was already unsuspended above.
+         *
+         * If authorization disappeared between the authorization check
+         * and consumption, immediately restore the Enhanced boundary.
+         */
+        if (
+            ProtectionPolicy.isEnhancedEnforced(this) &&
+            app.repository.isProtected(targetPackage)
+        ) {
+            EnhancedProtectionManager.restoreBoundary(
+                context = this,
+                packageName = targetPackage
+            )
+        }
+
+        android.util.Log.w(
+            "AppLockDiag",
+            "Launch rejected: authorization already consumed " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+
+        finishAndRemoveTask()
+        return
+    }
+
+    authenticationCompleted = true
+
+    /*
+     * Tell the Accessibility service that this exact request has now
+     * completed successfully.
+     */
+    AppDetectionAccessibilityService
+        .notifyAuthenticationSucceeded(
+            targetPackage,
+            requestId
+        )
+
+    launchIntent.addFlags(
+        Intent.FLAG_ACTIVITY_NEW_TASK
+    )
+
+    try {
+        startActivity(launchIntent)
+
+        android.util.Log.d(
+            "AppLockDiag",
+            "Authenticated launch started " +
+                "pkg=$targetPackage requestId=$requestId"
+        )
+
+    } catch (error: Throwable) {
+
+        android.util.Log.e(
+            "AppLockDiag",
+            "Authenticated launch failed " +
+                "pkg=$targetPackage requestId=$requestId",
+            error
+        )
+
+        /*
+         * If the launch itself fails, do not leave the protected package
+         * unsuspended in Enhanced Protection.
+         */
+        if (
+            ProtectionPolicy.isEnhancedEnforced(this) &&
+            app.repository.isProtected(targetPackage)
+        ) {
+            EnhancedProtectionManager.restoreBoundary(
+                context = this,
+                packageName = targetPackage
+            )
+        }
+
+        app.repository.clearUnlock(targetPackage)
+    }
+
+    finishAndRemoveTask()
+}
 
     // ---------------------------------------------------------------------
     // NAVIGATION
