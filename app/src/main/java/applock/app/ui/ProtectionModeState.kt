@@ -25,6 +25,19 @@ object ProtectionModeState {
     fun isEnhanced(context: Context): Boolean = get(context) == Mode.ENHANCED
     fun isStandard(context: Context): Boolean = get(context) == Mode.STANDARD
 
+    /**
+     * True only when the user has made an explicit, persisted choice of
+     * Standard Protection — as opposed to simply never having selected a
+     * mode (isSelected() == false), where [get] still defaults to
+     * STANDARD. Callers that want to honor a deliberate opt-out of
+     * Device Admin (e.g. suppressing an automatic Device Admin prompt)
+     * must use this, not `isStandard(context)` alone, or they will also
+     * suppress the prompt for users who were never asked at all —
+     * including everyone who used AppLock before Protection Mode existed.
+     */
+    fun isExplicitStandardChoice(context: Context): Boolean =
+        isSelected(context) && isStandard(context)
+
     fun reset(context: Context) {
         preferences(context).edit().remove(KEY_MODE).apply()
     }

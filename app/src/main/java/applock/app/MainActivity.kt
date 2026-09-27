@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import applock.app.security.AntiTamperManager
 import applock.app.service.AppDetectionAccessibilityService
 import applock.app.ui.AppLockRoot
+import applock.app.ui.ProtectionModeState
 import applock.app.ui.screens.DeviceAdminExplanationScreen
 import applock.app.ui.theme.AppLockTheme
 
@@ -137,11 +138,28 @@ class MainActivity : FragmentActivity() {
                 false
             )
 
+        /*
+         * The automatic nag (shouldShowDeviceAdminExplanation) has no
+         * knowledge of Protection Mode. If the user has explicitly
+         * chosen Standard Protection, respect that choice and do not
+         * show this screen unprompted — HomeScreen and
+         * ProtectionHealthScreen already stopped treating Standard +
+         * no Device Admin as a problem; this was the one remaining
+         * place that still nagged regardless of the user's choice.
+         *
+         * An explicit request via EXTRA_SHOW_DEVICE_ADMIN_EXPLANATION
+         * (e.g. the user tapping something that asks for this screen)
+         * is left unconditional — that is the user asking, not the
+         * app nagging, so it is honored even in Standard mode.
+         */
         showDeviceAdminExplanation =
             intent.getBooleanExtra(
                 EXTRA_SHOW_DEVICE_ADMIN_EXPLANATION,
                 false
-            ) || AntiTamperManager.shouldShowDeviceAdminExplanation(this)
+            ) || (
+                AntiTamperManager.shouldShowDeviceAdminExplanation(this) &&
+                    !ProtectionModeState.isExplicitStandardChoice(this)
+            )
 
         setContent {
             val theme by app.repository.theme.collectAsState()
