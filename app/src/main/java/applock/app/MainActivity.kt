@@ -21,6 +21,7 @@ import applock.app.ui.AppLockRoot
 import applock.app.ui.ProtectionModeState
 import applock.app.ui.screens.DeviceAdminExplanationScreen
 import applock.app.ui.theme.AppLockTheme
+import applock.app.security.DeviceOwnerProvisioningManager
 
 class MainActivity : FragmentActivity() {
 
@@ -180,6 +181,7 @@ class MainActivity : FragmentActivity() {
 
         val app =
             application as AppLockApplication
+        DeviceOwnerProvisioningManager.logCurrentState(this)
 
         /*
          * Opening the real AppLock UI is an explicit security boundary.
