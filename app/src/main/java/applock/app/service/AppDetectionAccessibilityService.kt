@@ -83,14 +83,27 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         Handler(Looper.getMainLooper())
 
     private data class PendingLock(
-        val packageName: String,
-        val requestId: Long,
-        var lockUiVisible: Boolean = false,
-        var lockUiReady: Boolean = false,
-        var sponsorContinued: Boolean = false,
-        var launchInFlight: Boolean = false,
-        var lastLaunchElapsed: Long = 0L
-    )
+    val packageName: String,
+    val requestId: Long,
+    var lockUiVisible: Boolean = false,
+    var lockUiReady: Boolean = false,
+    var sponsorContinued: Boolean = false,
+    var launchInFlight: Boolean = false,
+    var lastLaunchElapsed: Long = 0L,
+
+    /**
+     * Timestamp of the last LockActivity lifecycle disappearance.
+     *
+     * This is NOT authentication cancellation.
+     *
+     * OEM Android builds can stop/destroy LockActivity while SystemUI,
+     * biometric UI, launcher transition, or task-window reconciliation
+     * temporarily owns the foreground.
+     *
+     * During this grace period the request remains authoritative.
+     */
+    var lockUiDismissedAtElapsed: Long = 0L
+)
 
     @Volatile
     private var pending: PendingLock? = null
@@ -1432,7 +1445,36 @@ private fun finalizeUserLeft(
             provisionalDepartureRunnable
         )
     }
+val active = pending
 
+if (active != null) {
+    val dismissedAt =
+        active.lockUiDismissedAtElapsed
+
+    if (dismissedAt > 0L) {
+        val elapsed =
+            SystemClock.elapsedRealtime() - dismissedAt
+
+        if (elapsed < LOCK_UI_DISMISSAL_GRACE_MS) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "provisional departure HOLD: " +
+                    "LockActivity dismissal grace active " +
+                    "owner=${active.packageName} " +
+                    "requestId=${active.requestId} " +
+                    "elapsed=${elapsed}ms"
+            )
+
+            mainHandler.postDelayed(
+                provisionalDepartureRunnable,
+                LOCK_UI_DISMISSAL_GRACE_MS - elapsed
+            )
+
+            armWatchdog()
+            return
+        }
+    }
+}
     private fun finalizeProvisionalDeparture() {
         val owner =
             provisionalDeparturePackage
@@ -1912,56 +1954,108 @@ private fun finalizeUserLeft(
                      * launcher noise.
                      */
                     ForegroundPolicy.isLauncher(
-                        primaryForPending
-                    ) -> {
+    primaryForPending
+) -> {
 
-                        if (current.lockUiVisible) {
-                            android.util.Log.d(
-                                "AppLockDiag",
-                                "watchdog SUPPRESSED launcher-departure " +
-                                    "cancellation: LockActivity self-reports " +
-                                    "visible for owner=${current.packageName} " +
-                                    "reqId=${current.requestId} -- trusted " +
-                                    "over window enumeration"
-                            )
+    /*
+     * A recently dismissed LockActivity is still part of the same
+     * authentication transaction.
+     *
+     * Do NOT interpret launcher/SystemUI visibility as a real departure
+     * until the lifecycle grace period has expired.
+     */
+    val dismissedAt =
+        current.lockUiDismissedAtElapsed
 
-                            removeProtectionOverlay()
+    if (dismissedAt > 0L) {
+        val elapsed =
+            SystemClock.elapsedRealtime() - dismissedAt
 
-                            armWatchdog()
-                            return
-                        }
+        if (elapsed < LOCK_UI_DISMISSAL_GRACE_MS) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "watchdog HOLD launcher departure: " +
+                    "LockActivity lifecycle grace active " +
+                    "owner=${current.packageName} " +
+                    "requestId=${current.requestId} " +
+                    "elapsed=${elapsed}ms"
+            )
 
-                        android.util.Log.d(
-                            "AppLockDiag",
-                            "confirmed launcher departure during active auth: " +
-                                "foreground=$primaryForPending " +
-                                "owner=${current.packageName} " +
-                                "requestId=${current.requestId}"
-                        )
+            /*
+             * Keep the exact request alive.
+             *
+             * Do not create request N+1.
+             * Do not cancel LockEngine request.
+             * Do not clear pending.
+             */
+            showProtectionOverlay(
+                barrierPackage = current.packageName
+            )
 
-                        app.lockEngine.cancelRequest(
-                            current.packageName,
-                            current.requestId
-                        )
+            armWatchdog()
+            return
+        }
+    }
 
-                        clearPending()
+    /*
+     * LockActivity is still genuinely visible.
+     *
+     * Launcher window enumeration can be stale/noisy on gesture-navigation
+     * devices, so the Activity's own state remains authoritative.
+     */
+    if (current.lockUiVisible) {
+        android.util.Log.d(
+            "AppLockDiag",
+            "watchdog SUPPRESSED launcher-departure cancellation: " +
+                "LockActivity self-reports visible for " +
+                "owner=${current.packageName} " +
+                "reqId=${current.requestId}"
+        )
 
-                        provisionalDeparturePackage = null
+        removeProtectionOverlay()
 
-                        mainHandler.removeCallbacks(
-                            provisionalDepartureRunnable
-                        )
+        armWatchdog()
+        return
+    }
 
-                        removeProtectionOverlay()
+    /*
+     * Grace expired and LockActivity is genuinely gone.
+     *
+     * This is now a legitimate departure.
+     */
+    android.util.Log.d(
+        "AppLockDiag",
+        "confirmed launcher departure during active auth: " +
+            "foreground=$primaryForPending " +
+            "owner=${current.packageName} " +
+            "requestId=${current.requestId} " +
+            "dismissalGraceExpired=true"
+    )
 
-                        app.lockEngine.onUserLeftForeground()
+    app.lockEngine.cancelRequest(
+        current.packageName,
+        current.requestId
+    )
 
-                        lastForegroundPackage =
-                            primaryForPending
+    clearPending()
 
-                        disarmWatchdogIfIdle()
-                        return
-                    }
+    provisionalDeparturePackage = null
+
+    mainHandler.removeCallbacks(
+        provisionalDepartureRunnable
+    )
+
+    removeProtectionOverlay()
+
+    app.lockEngine.onUserLeftForeground()
+
+    lastForegroundPackage =
+        primaryForPending
+
+    disarmWatchdogIfIdle()
+
+    return
+}
 
                     /*
                      * Real foreign application.
@@ -1972,55 +2066,93 @@ private fun finalizeUserLeft(
                      * but the same window-enumeration unreliability applies,
                      * so the same trust check guards this branch too.
                      */
-                    else -> {
+                   else -> {
 
-                        if (current.lockUiVisible) {
-                            android.util.Log.d(
-                                "AppLockDiag",
-                                "watchdog SUPPRESSED app-departure " +
-                                    "cancellation: LockActivity self-reports " +
-                                    "visible for owner=${current.packageName} " +
-                                    "reqId=${current.requestId} -- trusted " +
-                                    "over window enumeration " +
-                                    "(reported foreground=$primaryForPending)"
-                            )
+    /*
+     * Recently dismissed LockActivity is still considered part of the
+     * active authentication transaction.
+     *
+     * Do not let a transient foreign/system window create request N+1.
+     */
+    val dismissedAt =
+        current.lockUiDismissedAtElapsed
 
-                            removeProtectionOverlay()
+    if (dismissedAt > 0L) {
+        val elapsed =
+            SystemClock.elapsedRealtime() - dismissedAt
 
-                            armWatchdog()
-                            return
-                        }
+        if (elapsed < LOCK_UI_DISMISSAL_GRACE_MS) {
+            android.util.Log.d(
+                "AppLockDiag",
+                "watchdog HOLD app departure: " +
+                    "LockActivity lifecycle grace active " +
+                    "owner=${current.packageName} " +
+                    "requestId=${current.requestId} " +
+                    "reportedForeground=$primaryForPending " +
+                    "elapsed=${elapsed}ms"
+            )
 
-                        android.util.Log.d(
-                            "AppLockDiag",
-                            "confirmed app departure during active auth: " +
-                                "foreground=$primaryForPending " +
-                                "owner=${current.packageName} " +
-                                "requestId=${current.requestId}"
-                        )
+            showProtectionOverlay(
+                barrierPackage = current.packageName
+            )
 
-                        app.lockEngine.cancelRequest(
-                            current.packageName,
-                            current.requestId
-                        )
+            armWatchdog()
+            return
+        }
+    }
 
-                        clearPending()
+    /*
+     * If LockActivity reports itself visible, trust the exact security
+     * Activity over noisy foreground enumeration.
+     */
+    if (current.lockUiVisible) {
+        android.util.Log.d(
+            "AppLockDiag",
+            "watchdog SUPPRESSED app-departure cancellation: " +
+                "LockActivity self-reports visible for " +
+                "owner=${current.packageName} " +
+                "reqId=${current.requestId} " +
+                "reportedForeground=$primaryForPending"
+        )
 
-                        provisionalDeparturePackage = null
+        removeProtectionOverlay()
 
-                        mainHandler.removeCallbacks(
-                            provisionalDepartureRunnable
-                        )
+        armWatchdog()
+        return
+    }
 
-                        removeProtectionOverlay()
+    android.util.Log.d(
+        "AppLockDiag",
+        "confirmed app departure during active auth: " +
+            "foreground=$primaryForPending " +
+            "owner=${current.packageName} " +
+            "requestId=${current.requestId} " +
+            "dismissalGraceExpired=true"
+    )
 
-                        app.lockEngine.onUserLeftForeground()
+    app.lockEngine.cancelRequest(
+        current.packageName,
+        current.requestId
+    )
 
-                        lastForegroundPackage = null
+    clearPending()
 
-                        disarmWatchdogIfIdle()
-                        return
-                    }
+    provisionalDeparturePackage = null
+
+    mainHandler.removeCallbacks(
+        provisionalDepartureRunnable
+    )
+
+    removeProtectionOverlay()
+
+    app.lockEngine.onUserLeftForeground()
+
+    lastForegroundPackage = null
+
+    disarmWatchdogIfIdle()
+
+    return
+}
                 }
             }
 
@@ -3116,129 +3248,140 @@ val domain =
     }
 
     fun onLockActivityShown(
-        targetPackage: String,
-        requestId: Long
+    targetPackage: String,
+    requestId: Long
+) {
+    val current = pending
+        ?: return
+
+    if (
+        current.packageName != targetPackage ||
+        current.requestId != requestId
     ) {
-        val current =
-            pending
-                ?: return
-
-        if (
-            current.packageName != targetPackage ||
-            current.requestId != requestId
-        ) {
-            return
-        }
-
-        current.lockUiVisible =
-            true
-
-        current.launchInFlight =
-            false
-
-        /*
-         * Activity existence is not enough to remove the native barrier.
-         * Wait for real READY/focus.
-         */
+        return
     }
+
+    current.lockUiVisible = true
+    current.lockUiReady = false
+    current.launchInFlight = false
+
+    /*
+     * The Activity is alive again for this exact transaction.
+     *
+     * Clear the lifecycle-disappearance grace window. A previous
+     * onStop/onDestroy was transient and must no longer influence the
+     * current transaction.
+     */
+    current.lockUiDismissedAtElapsed = 0L
+
+    android.util.Log.d(
+        "AppLockDiag",
+        "LockActivity SHOWN accepted " +
+            "pkg=$targetPackage requestId=$requestId"
+    )
+}
 
     fun onLockActivityReady(
-        targetPackage: String,
-        requestId: Long
+    targetPackage: String,
+    requestId: Long
+) {
+    val current = pending
+        ?: return
+
+    if (
+        current.packageName != targetPackage ||
+        current.requestId != requestId
     ) {
-        val current =
-            pending
-                ?: return
+        return
+    }
 
-        if (
-            current.packageName != targetPackage ||
-            current.requestId != requestId
-        ) {
-            return
-        }
+    if (!app.repository.isProtected(targetPackage)) {
+        clearPending()
 
-        /*
-         * Configuration can change while the Activity is starting.
-         */
-        if (!app.repository.isProtected(targetPackage)) {
-            clearPending()
-
-            removeProtectionOverlay()
-
-            disarmWatchdogIfIdle()
-
-            return
-        }
-
-        /*
-         * READY is emitted only after LockActivity has real window focus.
-         */
-        current.lockUiReady =
-            true
-
-        current.lockUiVisible =
-            true
-
-        current.launchInFlight =
-            false
-
-        android.util.Log.d(
-            "AppLockDiag",
-            "LockActivity READY accepted " +
-                "pkg=$targetPackage requestId=$requestId " +
-                "sponsorContinued=${current.sponsorContinued}"
-        )
-
-        /*
-         * READY from the exact active request is the hand-off point.
-         *
-         * Authentication is still required.
-         */
         removeProtectionOverlay()
 
-        armWatchdog()
+        disarmWatchdogIfIdle()
+
+        return
     }
+
+    current.lockUiReady = true
+    current.lockUiVisible = true
+    current.launchInFlight = false
+
+    /*
+     * READY is authoritative evidence that the exact LockActivity is
+     * currently the security surface.
+     *
+     * Any previous lifecycle disappearance was transient.
+     */
+    current.lockUiDismissedAtElapsed = 0L
+
+    android.util.Log.d(
+        "AppLockDiag",
+        "LockActivity READY accepted " +
+            "pkg=$targetPackage requestId=$requestId " +
+            "sponsorContinued=${current.sponsorContinued}"
+    )
+
+    removeProtectionOverlay()
+
+    armWatchdog()
+}
 
     fun onLockActivityDismissed(
-        targetPackage: String,
-        requestId: Long
+    targetPackage: String,
+    requestId: Long
+) {
+    val current = pending
+        ?: return
+
+    if (
+        current.packageName != targetPackage ||
+        current.requestId != requestId
     ) {
-        val current =
-            pending
-                ?: return
-
-        if (
-            current.packageName != targetPackage ||
-            current.requestId != requestId
-        ) {
-            return
-        }
-
-        /*
-         * Activity destruction/stop is NOT authentication and is NOT permission
-         * to clear the transaction.
-         */
-        current.lockUiVisible =
-            false
-
-        current.lockUiReady =
-            false
-
-        val visible =
-            resolveVisiblePackages()
-
-        val primary =
-            visible.windowsPrimary
-                ?: visible.usageStatsPrimary
-
-        // Do not immediately recreate the sponsor overlay here. Activity
-        // stop/destroy can be a transient lifecycle event (especially around
-        // BiometricPrompt). The watchdog will decide whether a real departure
-        // occurred and only then recreate protection UI.
-        removeProtectionOverlay()
-
-        armWatchdog()
+        return
     }
+
+    /*
+     * IMPORTANT:
+     *
+     * Activity lifecycle disappearance is NOT authentication cancellation.
+     *
+     * A READY LockActivity can temporarily disappear because of:
+     *
+     * - BiometricPrompt / SystemUI
+     * - OEM task/window transitions
+     * - launcher window reporting
+     * - activity recreation
+     *
+     * Keep the exact authentication transaction alive.
+     */
+    current.lockUiVisible = false
+    current.lockUiReady = false
+
+    current.lockUiDismissedAtElapsed =
+        SystemClock.elapsedRealtime()
+
+    android.util.Log.d(
+        "AppLockDiag",
+        "LockActivity DISMISSED lifecycle-only " +
+            "pkg=$targetPackage requestId=$requestId " +
+            "grace=${LOCK_UI_DISMISSAL_GRACE_MS}ms"
+    )
+
+    /*
+     * Do not recreate the sponsor here.
+     *
+     * Do not cancel the request here.
+     *
+     * The watchdog/foreground reconciliation will determine whether
+     * this was a transient lifecycle transition or a real departure.
+     */
+    removeProtectionOverlay()
+
+    armWatchdog()
+}
 
     /**
      * Completes the biometric -> protected-app hand-off without depending on
@@ -3575,6 +3718,14 @@ val domain =
     // ------------------------------------------------------------- companion
 
     companion object {
+        /**
+ * Grace period after LockActivity disappears.
+ *
+ * The request remains authoritative during this window.
+ * This prevents OEM lifecycle transitions from being interpreted as
+ * authentication cancellation and creating request N+1.
+ */
+const val LOCK_UI_DISMISSAL_GRACE_MS = 2_000L
 
         const val MANAGEMENT_SESSION_TTL_MS =
             30_000L
