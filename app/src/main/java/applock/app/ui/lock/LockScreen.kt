@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,7 +51,9 @@ import androidx.fragment.app.FragmentActivity
 import applock.app.AppLockApplication
 import applock.app.domain.AuthMethod
 import applock.app.engine.LockEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.security.SecureRandom
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -82,12 +85,27 @@ fun LockScreen(
         secureShuffleDigits()
     }
 
-    val label = remember(packageName) {
-        runCatching {
-            context.packageManager.getApplicationLabel(
-                context.packageManager.getApplicationInfo(packageName, 0)
-            ).toString()
-        }.getOrDefault("Protected app")
+    /*
+     * The app label is only used for display text - it does not gate
+     * anything security-relevant. getApplicationLabel/getApplicationInfo
+     * is a PackageManager Binder call, which can add real (if usually
+     * small) latency; doing it synchronously inside remember{} would
+     * block this composable's very first frame on that IPC round-trip.
+     * produceState starts with an immediate fallback and lets the real
+     * label arrive on a background dispatcher, so the lock screen itself
+     * (PIN pad, biometric prompt) is never waiting on this.
+     */
+    val label by produceState(
+        initialValue = "Protected app",
+        key1 = packageName
+    ) {
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                context.packageManager.getApplicationLabel(
+                    context.packageManager.getApplicationInfo(packageName, 0)
+                ).toString()
+            }.getOrDefault("Protected app")
+        }
     }
 
     LaunchedEffect(packageName, engineState) {

@@ -683,6 +683,25 @@ class LockActivity : FragmentActivity() {
 
         startActivity(launchIntent)
 
+        /*
+         * Suppress the default Android activity-switch animation for this
+         * specific transition (LockActivity -> target app). This is purely
+         * cosmetic - it does not touch auth verification, request-ID
+         * consumption, or the barrier/overlay removal above, which already
+         * happen synchronously in notifyAuthenticationSucceeded() before
+         * this point. Without this, the default cross-fade/slide (commonly
+         * ~250-450ms depending on device/OEM) is visible on every single
+         * successful unlock, on top of whatever it actually takes to get
+         * here.
+         *
+         * This does not remove Android 12+'s own mandatory splash-screen
+         * behavior for a cold-started target app, which imposes its own
+         * minimum visible duration independent of this activity transition -
+         * that is a separate, unavoidable platform behavior, not something
+         * this call touches.
+         */
+        overridePendingTransition(0, 0)
+
         finishAndRemoveTask()
     }
 
