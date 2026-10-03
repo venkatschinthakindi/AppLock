@@ -5,10 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.Intent
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,7 +118,9 @@ fun AppLockRoot(
     val theme by repository.theme.collectAsState()
 
     val drawerState =
-        rememberDrawerState(DrawerValue.Closed)
+        rememberDrawerState(
+            DrawerValue.Closed
+        )
 
     val scope =
         rememberCoroutineScope()
@@ -140,6 +139,16 @@ fun AppLockRoot(
      * ------------------------------------------------------------------
      * DEVICE ADMIN
      * ------------------------------------------------------------------
+     *
+     * Device Admin remains available for the existing Standard/tamper
+     * protection functionality.
+     *
+     * IMPORTANT:
+     *
+     * Device Admin is NOT part of the mandatory first-run sequence.
+     *
+     * Installing AppLock or completing onboarding must NOT launch
+     * ACTION_ADD_DEVICE_ADMIN automatically.
      */
     val devicePolicyManager =
         remember(context) {
@@ -165,13 +174,11 @@ fun AppLockRoot(
     }
 
     /*
-     * Tracks whether the normal Protection Level screen is currently
-     * showing the Device Admin explanation before Android's confirmation UI.
+     * This is retained for the existing Protection Level screen.
      *
-     * This is separate from the first-run Device Admin flow above.
+     * It is intentionally false during first-run.
      *
-     * NOTE: This state remains for the existing Standard/Device Admin flow.
-     * Enhanced Protection no longer uses it.
+     * Nothing in the first-run flow sets this to true.
      */
     var showProtectionAdminDisclosure by remember {
         mutableStateOf(false)
@@ -181,8 +188,8 @@ fun AppLockRoot(
         LocalLifecycleOwner.current
 
     /*
-     * Re-check Device Admin whenever AppLock returns from an Android
-     * system screen.
+     * Re-check Device Admin whenever AppLock returns from a system
+     * settings/permission screen.
      */
     DisposableEffect(
         lifecycleOwner,
@@ -221,8 +228,24 @@ fun AppLockRoot(
      * FIRST-RUN STATE
      * ------------------------------------------------------------------
      *
-     * Protection Mode is required once authentication setup has
-     * completed.
+     * IMPORTANT CHANGE:
+     *
+     * Device Admin is deliberately NOT checked here.
+     *
+     * New first-run sequence:
+     *
+     *   onboarding
+     *       ↓
+     *   accessibility disclosure
+     *       ↓
+     *   authentication
+     *       ↓
+     *   protection mode
+     *       ↓
+     *   normal app
+     *
+     * Device Admin is therefore optional and never automatically
+     * requested during installation/onboarding.
      */
     var firstRunStep by remember {
 
@@ -232,12 +255,6 @@ fun AppLockRoot(
 
                 !repository.isOnboardingComplete() ->
                     FIRST_RUN_ONBOARDING
-
-                !FirstRunSetupState
-                    .isDeviceAdminDecisionComplete(
-                        context
-                    ) ->
-                    FIRST_RUN_DEVICE_ADMIN
 
                 !repository.disclosureAccepted() ->
                     FIRST_RUN_DISCLOSURE
@@ -258,54 +275,18 @@ fun AppLockRoot(
 
     /*
      * ------------------------------------------------------------------
-     * DEVICE ADMIN RETURN
-     * ------------------------------------------------------------------
-     */
-    LaunchedEffect(
-        deviceAdminActive,
-        firstRunStep
-    ) {
-
-        if (
-            firstRunStep ==
-            FIRST_RUN_DEVICE_ADMIN &&
-            deviceAdminActive
-        ) {
-
-            FirstRunSetupState
-                .markDeviceAdminDecisionComplete(
-                    context
-                )
-
-            firstRunStep =
-                when {
-
-                    !repository.disclosureAccepted() ->
-                        FIRST_RUN_DISCLOSURE
-
-                    !repository.authenticationConfigured() ->
-                        FIRST_RUN_SECURITY
-
-                    !ProtectionModeState.isSelected(
-                        context
-                    ) ->
-                        FIRST_RUN_PROTECTION_MODE
-
-                    else ->
-                        FIRST_RUN_DONE
-                }
-        }
-    }
-
-    /*
-     * ------------------------------------------------------------------
      * DEVICE ADMIN LAUNCHER
      * ------------------------------------------------------------------
+     *
+     * Kept for explicit Device Admin requests elsewhere in AppLock.
+     *
+     * It is NEVER launched automatically by this composable.
      */
     val deviceAdminLauncher =
-        rememberLauncherForActivityResult(
+        androidx.activity.compose.rememberLauncherForActivityResult(
             contract =
-                ActivityResultContracts
+                androidx.activity.result.contract
+                    .ActivityResultContracts
                     .StartActivityForResult()
         ) {
 
@@ -321,54 +302,52 @@ fun AppLockRoot(
                         context
                     )
 
-                firstRunStep =
-                    when {
+                /*
+                 * If this callback happens while first-run is still
+                 * active, continue according to the actual first-run
+                 * requirements.
+                 *
+                 * Device Admin itself is NOT a prerequisite anymore.
+                 */
+                if (
+                    firstRunStep ==
+                    FIRST_RUN_DEVICE_ADMIN
+                ) {
 
-                        !repository.disclosureAccepted() ->
-                            FIRST_RUN_DISCLOSURE
+                    firstRunStep =
+                        when {
 
-                        !repository.authenticationConfigured() ->
-                            FIRST_RUN_SECURITY
+                            !repository.disclosureAccepted() ->
+                                FIRST_RUN_DISCLOSURE
 
-                        !ProtectionModeState.isSelected(
-                            context
-                        ) ->
-                            FIRST_RUN_PROTECTION_MODE
+                            !repository.authenticationConfigured() ->
+                                FIRST_RUN_SECURITY
 
-                        else ->
-                            FIRST_RUN_DONE
-                    }
+                            !ProtectionModeState.isSelected(
+                                context
+                            ) ->
+                                FIRST_RUN_PROTECTION_MODE
+
+                            else ->
+                                FIRST_RUN_DONE
+                        }
+                }
             }
         }
 
     /*
      * ------------------------------------------------------------------
-     * ENHANCED PROTECTION — DEVICE OWNER PROVISIONING
+     * ENHANCED PROTECTION
      * ------------------------------------------------------------------
      *
-     * Enhanced Protection is an OS-boundary mode. Device Admin is NOT
-     * sufficient authority for it. The existing Device Admin flow above
-     * remains untouched for Standard Protection and the first-run
-     * tamper-protection decision.
+     * Enhanced Protection requires actual Device Owner authority.
      *
-     * Android 12+ requires managed-device provisioning callbacks rather
-     * than starting the deprecated ACTION_PROVISION_MANAGED_DEVICE flow
-     * from an ordinary already-provisioned app. Therefore this launcher
-     * only uses the legacy direct provisioning action on Android versions
-     * where that action is still supported by the platform.
+     * Device Admin is NOT treated as Device Owner.
      */
-    
-    val enhancedProvisioningLauncher =
-    rememberLauncherForActivityResult(
-        contract =
-            ActivityResultContracts
-                .StartActivityForResult()
-    ) {
+    fun beginEnhancedProtection(): Boolean {
 
         /*
-         * Never trust RESULT_OK by itself.
-         *
-         * Device Owner state is the source of truth.
+         * First check the real OS authority.
          */
         if (
             ProtectionPolicy.selectEnhancedIfAvailable(
@@ -381,41 +360,22 @@ fun AppLockRoot(
 
             showProtectionAdminDisclosure =
                 false
-        }
-    }
 
-    fun beginEnhancedProtection(): Boolean {
-
-        /*
-        * If Device Owner already exists, Enhanced Protection can
-        * immediately become active.
-        */
-        if (
-            ProtectionPolicy.selectEnhancedIfAvailable(
-                context
-            )
-        ) {
-            firstRunStep = FIRST_RUN_DONE
-            showProtectionAdminDisclosure = false
             return true
         }
 
+        /*
+         * Device Owner does not exist.
+         */
         val activity =
             context.findActivity()
                 ?: return false
 
-        /*
-        * Android 11 and below:
-        *
-        * startDeviceOwnerProvisioning() itself starts the legacy
-        * provisioning activity.
-        *
-        * DO NOT call enhancedProvisioningLauncher.launch() after
-        * STARTED. That was the double-launch bug in the current code.
-        */
         when (
             DeviceOwnerProvisioningManager
-                .startDeviceOwnerProvisioning(activity)
+                .startDeviceOwnerProvisioning(
+                    activity
+                )
         ) {
 
             DeviceOwnerProvisioningManager
@@ -428,8 +388,12 @@ fun AppLockRoot(
                         )
 
                 if (enabled) {
-                    firstRunStep = FIRST_RUN_DONE
-                    showProtectionAdminDisclosure = false
+
+                    firstRunStep =
+                        FIRST_RUN_DONE
+
+                    showProtectionAdminDisclosure =
+                        false
                 }
 
                 return enabled
@@ -439,11 +403,11 @@ fun AppLockRoot(
                 .ProvisioningStartResult.STARTED -> {
 
                 /*
-                * The provisioning UI has now been started by the manager.
-                *
-                * The ActivityResult callback below is only useful for the
-                * legacy pre-Android-12 provisioning flow.
-                */
+                 * Legacy pre-Android-12 provisioning has started.
+                 *
+                 * Do not mark Enhanced as active until the OS confirms
+                 * actual Device Owner authority.
+                 */
                 return true
             }
 
@@ -451,15 +415,12 @@ fun AppLockRoot(
                 .ProvisioningStartResult.NOT_SUPPORTED_ON_THIS_DEVICE -> {
 
                 /*
-                * Android 12+:
-                *
-                * Do not attempt ACTION_PROVISION_MANAGED_DEVICE here.
-                *
-                * Device Owner must be established through Android's
-                * managed provisioning mechanism.
-                *
-                * Leave Enhanced Protection unselected.
-                */
+                 * Android 12+ on an already-provisioned device.
+                 *
+                 * Do not fall back to Device Admin.
+                 *
+                 * Do not select Enhanced.
+                 */
                 return false
             }
 
@@ -478,9 +439,6 @@ fun AppLockRoot(
      * ------------------------------------------------------------------
      * ADS
      * ------------------------------------------------------------------
-     *
-     * Ads are initialized only after first-run security and protection
-     * mode setup are complete.
      */
     var adsReady by remember {
         mutableStateOf(
@@ -547,15 +505,33 @@ fun AppLockRoot(
                         true
                     )
 
+                    /*
+                     * IMPORTANT:
+                     *
+                     * Previously this went to:
+                     *
+                     *     FIRST_RUN_DEVICE_ADMIN
+                     *
+                     * That was the reason Device Admin appeared
+                     * immediately after installation.
+                     *
+                     * It now goes directly to the disclosure step.
+                     */
                     firstRunStep =
-                        FIRST_RUN_DEVICE_ADMIN
+                        FIRST_RUN_DISCLOSURE
                 }
             }
 
             /*
              * ==========================================================
-             * STEP 2 — DEVICE ADMIN
+             * LEGACY DEVICE ADMIN STEP
              * ==========================================================
+             *
+             * This branch is retained for compatibility with any
+             * existing state that may already have reached this step.
+             *
+             * It is NOT reachable for a fresh installation because
+             * the first-run state machine above no longer selects it.
              */
             FIRST_RUN_DEVICE_ADMIN -> {
 
@@ -564,7 +540,7 @@ fun AppLockRoot(
                     onEnableProtection = {
 
                         val intent =
-                            Intent(
+                            android.content.Intent(
                                 DevicePolicyManager
                                     .ACTION_ADD_DEVICE_ADMIN
                             ).apply {
@@ -591,11 +567,6 @@ fun AppLockRoot(
 
                     onNotNow = {
 
-                        /*
-                         * The user explicitly declined Device Admin.
-                         * Record the decision so first-run does not
-                         * repeatedly stop here.
-                         */
                         FirstRunSetupState
                             .markDeviceAdminDecisionComplete(
                                 context
@@ -624,7 +595,7 @@ fun AppLockRoot(
 
             /*
              * ==========================================================
-             * STEP 3 — ACCESSIBILITY DISCLOSURE
+             * STEP 2 — ACCESSIBILITY DISCLOSURE
              * ==========================================================
              */
             FIRST_RUN_DISCLOSURE -> {
@@ -652,7 +623,7 @@ fun AppLockRoot(
 
             /*
              * ==========================================================
-             * STEP 4 — SECURITY / AUTHENTICATION SETUP
+             * STEP 3 — SECURITY / AUTHENTICATION SETUP
              * ==========================================================
              */
             FIRST_RUN_SECURITY -> {
@@ -661,20 +632,17 @@ fun AppLockRoot(
 
                     onComplete = {
 
-                        /*
-                         * Authentication is now configured.
-                         *
-                         * Continue to Protection Mode unless a mode
-                         * was already selected.
-                         */
                         firstRunStep =
                             if (
                                 ProtectionModeState.isSelected(
                                     context
                                 )
                             ) {
+
                                 FIRST_RUN_DONE
+
                             } else {
+
                                 FIRST_RUN_PROTECTION_MODE
                             }
                     }
@@ -683,12 +651,8 @@ fun AppLockRoot(
 
             /*
              * ==========================================================
-             * STEP 5 — PROTECTION MODE
+             * STEP 4 — PROTECTION MODE
              * ==========================================================
-             *
-             * Standard remains the existing production path.
-             * Enhanced is now independent from Device Admin and requires
-             * actual Device Owner authority before it can be persisted.
              */
             FIRST_RUN_PROTECTION_MODE -> {
 
@@ -699,6 +663,12 @@ fun AppLockRoot(
 
                     onStandardSelected = {
 
+                        /*
+                         * Standard Protection does NOT request Device
+                         * Admin automatically.
+                         *
+                         * It simply selects Standard mode.
+                         */
                         ProtectionPolicy.selectStandard(
                             context
                         )
@@ -709,7 +679,16 @@ fun AppLockRoot(
 
                     onEnhancedSelected = {
 
-                        if (beginEnhancedProtection()) {
+                        /*
+                         * Enhanced can only become selected if actual
+                         * Device Owner authority exists.
+                         *
+                         * Device Admin is deliberately NOT accepted
+                         * as a substitute.
+                         */
+                        if (
+                            beginEnhancedProtection()
+                        ) {
 
                             firstRunStep =
                                 FIRST_RUN_DONE
@@ -785,6 +764,7 @@ fun AppLockRoot(
                                             Icon(
                                                 imageVector =
                                                     Icons.Default.Menu,
+
                                                 contentDescription =
                                                     "Open menu"
                                             )
@@ -793,8 +773,10 @@ fun AppLockRoot(
                                         Image(
                                             painter =
                                                 AppLockIconPainter(),
+
                                             contentDescription =
                                                 "AppLock logo",
+
                                             modifier =
                                                 Modifier.size(
                                                     36.dp
@@ -874,22 +856,23 @@ fun AppLockRoot(
                                     "protection_mode" -> {
 
                                         /*
-                                         * Existing Device Admin disclosure is
-                                         * retained only for the existing
-                                         * Device Admin/Standard path.
+                                         * Existing Protection Level screen.
                                          *
-                                         * Enhanced never routes through this
-                                         * screen anymore.
+                                         * Device Admin disclosure is only
+                                         * shown when explicitly requested
+                                         * by some future Standard/tamper
+                                         * flow.
                                          */
                                         if (
                                             showProtectionAdminDisclosure
                                         ) {
 
                                             DeviceAdminExplanationScreen(
+
                                                 onEnableProtection = {
 
                                                     val intent =
-                                                        Intent(
+                                                        android.content.Intent(
                                                             DevicePolicyManager
                                                                 .ACTION_ADD_DEVICE_ADMIN
                                                         ).apply {
@@ -908,10 +891,13 @@ fun AppLockRoot(
                                                         }
 
                                                     deviceAdminLauncher
-                                                        .launch(intent)
+                                                        .launch(
+                                                            intent
+                                                        )
                                                 },
 
                                                 onNotNow = {
+
                                                     showProtectionAdminDisclosure =
                                                         false
                                                 }
@@ -920,6 +906,7 @@ fun AppLockRoot(
                                         } else {
 
                                             ProtectionModeSelectionScreen(
+
                                                 deviceAdminActive =
                                                     deviceAdminActive,
 
@@ -934,11 +921,8 @@ fun AppLockRoot(
                                                 onEnhancedSelected = {
 
                                                     /*
-                                                     * Enhanced is NOT allowed
-                                                     * to fall back to Device
-                                                     * Admin. If Device Owner is
-                                                     * unavailable, leave the
-                                                     * current mode unchanged.
+                                                     * Never fall back to
+                                                     * Device Admin.
                                                      */
                                                     beginEnhancedProtection()
                                                 }
