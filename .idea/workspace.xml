@@ -11,14 +11,9 @@
   <component name="ChangeListManager">
     <list default="true" id="722df63b-08c1-4a14-8254-1bd9cf365b21" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/build/intermediates/linked_resources_binary_format/debug/processDebugResources/linked-resources-binary-format-debug.ap_" beforeDir="false" afterPath="$PROJECT_DIR$/app/build/intermediates/linked_resources_binary_format/debug/processDebugResources/linked-resources-binary-format-debug.ap_" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/build/intermediates/manifest_merge_blame_file/debug/processDebugMainManifest/manifest-merger-blame-debug-report.txt" beforeDir="false" afterPath="$PROJECT_DIR$/app/build/intermediates/manifest_merge_blame_file/debug/processDebugMainManifest/manifest-merger-blame-debug-report.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/AndroidManifest.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/MainActivity.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/security/DeviceOwnerProvisioningManager.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/security/DeviceOwnerProvisioningManager.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/security/ProtectionPolicy.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/security/ProtectionPolicy.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/service/AppDetectionAccessibilityService.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/service/AppDetectionAccessibilityService.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/AppLockRoot.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/ui/AppLockRoot.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/security/PolicyComplianceActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/security/PolicyComplianceActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/applock/app/security/ProvisioningModeActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/applock/app/security/ProvisioningModeActivity.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

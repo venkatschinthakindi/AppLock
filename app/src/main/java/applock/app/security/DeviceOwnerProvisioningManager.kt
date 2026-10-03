@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.util.Log
 
@@ -12,43 +11,97 @@ import android.util.Log
  * Central authority for AppLock Device Owner / package-suspension capability.
  *
  * IMPORTANT:
+ *
  * Device Admin != Device Owner.
  *
- * Enhanced Protection requires actual Device Owner authority.
+ * Standard Protection can operate without Device Owner.
+ *
+ * Enhanced Protection requires actual Device Owner authority because
+ * AppLock needs OS-level package suspension to create the stronger
+ * protection boundary.
+ *
+ * Android 12+:
+ * Device Owner provisioning is an OS-managed provisioning process.
+ * An ordinary already-provisioned consumer device cannot be converted
+ * into a Device Owner simply by launching an Activity from the app.
+ *
+ * The provisioning callback Activities are implemented separately:
+ *
+ *   ProvisioningModeActivity
+ *   PolicyComplianceActivity
+ *
+ * Those Activities are consumed by Android's managed-provisioning flow.
+ *
+ * This class therefore NEVER pretends that Device Admin means Device Owner.
  */
 object DeviceOwnerProvisioningManager {
 
     private const val TAG = "AppLockDiag"
 
+    /**
+     * Kept for compatibility with existing callers.
+     *
+     * On Android 12+, there is no normal in-app Activity result flow
+     * that can grant Device Owner on an already-provisioned device.
+     */
     const val REQUEST_DEVICE_OWNER_PROVISIONING = 4901
 
     enum class ProvisioningStartResult {
+        /**
+         * AppLock already owns the device.
+         */
         ALREADY_DEVICE_OWNER,
+
+        /**
+         * A legacy pre-Android-12 provisioning flow was started.
+         */
         STARTED,
+
+        /**
+         * Device Owner cannot currently be provisioned through this
+         * API path.
+         */
         NOT_ALLOWED,
+
+        /**
+         * Android 12+ uses OS-managed provisioning instead of the
+         * legacy ACTION_PROVISION_MANAGED_DEVICE launch.
+         */
         NOT_SUPPORTED_ON_THIS_DEVICE,
+
+        /**
+         * Unexpected failure.
+         */
         FAILED
     }
 
-    private fun dpm(context: Context): DevicePolicyManager =
-        context.getSystemService(
+    private fun dpm(
+        context: Context
+    ): DevicePolicyManager {
+        return context.getSystemService(
             DevicePolicyManager::class.java
         )
+    }
 
     private fun adminComponent(
         context: Context
-    ): ComponentName =
-        ComponentName(
+    ): ComponentName {
+        return ComponentName(
             context,
             AppLockDeviceAdminReceiver::class.java
         )
+    }
 
+    /**
+     * Returns true only when AppLock is the actual Device Owner.
+     */
     fun isDeviceOwner(
         context: Context
     ): Boolean {
         return try {
-            dpm(context)
-                .isDeviceOwnerApp(context.packageName)
+            dpm(context).isDeviceOwnerApp(
+                context.packageName
+            )
         } catch (t: Throwable) {
             Log.e(
                 TAG,
@@ -59,6 +112,12 @@ object DeviceOwnerProvisioningManager {
         }
     }
 
+    /**
+     * Returns true when AppLock has either Device Owner or Profile Owner
+     * authority.
+     *
+     * Enhanced Protection currently requires Device Owner specifically.
+     */
     fun isPolicyOwner(
         context: Context
     ): Boolean {
@@ -82,29 +141,30 @@ object DeviceOwnerProvisioningManager {
     }
 
     /**
-     * Direct provisioning is only available through the legacy
-     * ACTION_PROVISION_MANAGED_DEVICE path on Android 11 and below.
+     * Enhanced Protection requires actual Device Owner authority.
+     */
+    fun isEnhancedAuthorityAvailable(
+        context: Context
+    ): Boolean {
+        return isDeviceOwner(context)
+    }
+
+    /**
+     * Legacy direct Device Owner provisioning is only applicable
+     * before Android 12.
      *
-     * Android 12+ requires the managed provisioning flow using:
-     *
-     * ACTION_GET_PROVISIONING_MODE
-     * ACTION_ADMIN_POLICY_COMPLIANCE
+     * Android 12+ requires the OS-managed provisioning flow.
      */
     fun isDirectDeviceOwnerProvisioningAllowed(
         context: Context
     ): Boolean {
-
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.S
-        ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return false
         }
 
         return try {
             dpm(context).isProvisioningAllowed(
-                DevicePolicyManager
-                    .ACTION_PROVISION_MANAGED_DEVICE
+                DevicePolicyManager.ACTION_PROVISION_MANAGED_DEVICE
             )
         } catch (t: Throwable) {
             Log.e(
@@ -117,42 +177,45 @@ object DeviceOwnerProvisioningManager {
     }
 
     /**
-     * Creates the legacy provisioning Intent.
+     * Creates the legacy provisioning Intent for Android 11 and lower.
      *
-     * IMPORTANT:
-     * This method DOES NOT start the Intent.
-     *
-     * AppLockRoot owns the ActivityResult launcher.
+     * Never use this path on Android 12+.
      */
     fun createLegacyProvisioningIntent(
         context: Context
-    ): Intent? {
+    ): android.content.Intent? {
 
         if (isDeviceOwner(context)) {
-            return null
-        }
-
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.S
-        ) {
-            return null
-        }
-
-        if (
-            !isDirectDeviceOwnerProvisioningAllowed(
-                context
+            Log.d(
+                TAG,
+                "createLegacyProvisioningIntent: " +
+                    "already Device Owner"
             )
-        ) {
+            return null
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Log.w(
+                TAG,
+                "createLegacyProvisioningIntent: " +
+                    "Android 12+ uses OS-managed provisioning"
+            )
+            return null
+        }
+
+        if (!isDirectDeviceOwnerProvisioningAllowed(context)) {
+            Log.w(
+                TAG,
+                "createLegacyProvisioningIntent: " +
+                    "provisioning is not allowed"
+            )
             return null
         }
 
         return try {
-            Intent(
-                DevicePolicyManager
-                    .ACTION_PROVISION_MANAGED_DEVICE
+            android.content.Intent(
+                DevicePolicyManager.ACTION_PROVISION_MANAGED_DEVICE
             ).apply {
-
                 putExtra(
                     DevicePolicyManager
                         .EXTRA_PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME,
@@ -162,7 +225,8 @@ object DeviceOwnerProvisioningManager {
         } catch (t: Throwable) {
             Log.e(
                 TAG,
-                "Unable to create Device Owner provisioning Intent",
+                "Unable to create legacy Device Owner " +
+                    "provisioning Intent",
                 t
             )
             null
@@ -170,47 +234,85 @@ object DeviceOwnerProvisioningManager {
     }
 
     /**
-     * Legacy pre-Android-12 provisioning entry point.
+     * Attempts Device Owner provisioning.
      *
-     * This method starts provisioning exactly once.
+     * Android 12+ deliberately does NOT attempt to launch
+     * ACTION_PROVISION_MANAGED_DEVICE because Android rejects that
+     * provisioning path.
      *
-     * Do not call createLegacyProvisioningIntent() after this method
-     * returns STARTED.
+     * On Android 12+, Device Owner must be established through the
+     * supported managed-device provisioning mechanism.
      */
     fun startDeviceOwnerProvisioning(
         activity: Activity
     ): ProvisioningStartResult {
 
         if (isDeviceOwner(activity)) {
-            return ProvisioningStartResult
-                .ALREADY_DEVICE_OWNER
+            Log.d(
+                TAG,
+                "startDeviceOwnerProvisioning: " +
+                    "already Device Owner"
+            )
+
+            return ProvisioningStartResult.ALREADY_DEVICE_OWNER
         }
 
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.S
-        ) {
+        /*
+         * Android 12 / API 31 and later.
+         *
+         * Do NOT launch ACTION_PROVISION_MANAGED_DEVICE here.
+         *
+         * Android documentation explicitly states that using that
+         * action to start provisioning on Android 12+ causes
+         * provisioning to fail.
+         *
+         * The OS-managed flow will call our:
+         *
+         *   ProvisioningModeActivity
+         *   PolicyComplianceActivity
+         *
+         * when the device is actually being provisioned.
+         */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+
+            Log.w(
+                TAG,
+                "startDeviceOwnerProvisioning: " +
+                    "Device Owner is not currently available. " +
+                    "Android ${Build.VERSION.SDK_INT} requires " +
+                    "OS-managed device provisioning. " +
+                    "AppLock cannot self-promote from an already-" +
+                    "provisioned device."
+            )
+
             return ProvisioningStartResult
                 .NOT_SUPPORTED_ON_THIS_DEVICE
         }
 
-        if (
-            !isDirectDeviceOwnerProvisioningAllowed(
-                activity
+        /*
+         * Android 11 and below.
+         */
+        if (!isDirectDeviceOwnerProvisioningAllowed(activity)) {
+
+            Log.w(
+                TAG,
+                "startDeviceOwnerProvisioning: " +
+                    "legacy provisioning is not allowed"
             )
-        ) {
-            return ProvisioningStartResult
-                .NOT_ALLOWED
+
+            return ProvisioningStartResult.NOT_ALLOWED
         }
 
         val intent =
-            createLegacyProvisioningIntent(
-                activity
-            )
-                ?: return ProvisioningStartResult
-                    .FAILED
+            createLegacyProvisioningIntent(activity)
+                ?: return ProvisioningStartResult.FAILED
 
         return try {
+
+            Log.d(
+                TAG,
+                "Starting legacy Device Owner provisioning"
+            )
 
             activity.startActivityForResult(
                 intent,
@@ -231,6 +333,34 @@ object DeviceOwnerProvisioningManager {
         }
     }
 
+    /**
+     * Returns a human-readable reason that Enhanced Protection
+     * cannot currently be enabled.
+     *
+     * This is intentionally diagnostic only. UI can use this to
+     * explain the state without pretending that Device Admin is
+     * equivalent to Device Owner.
+     */
+    fun getEnhancedProtectionAvailabilityMessage(
+        context: Context
+    ): String? {
+
+        if (isDeviceOwner(context)) {
+            return null
+        }
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            "Enhanced Protection requires AppLock to be provisioned " +
+                "by Android as the Device Owner. This cannot be " +
+                "enabled from an already-provisioned device."
+        } else {
+            "Enhanced Protection requires Device Owner provisioning."
+        }
+    }
+
+    /**
+     * Logs the complete DevicePolicy state.
+     */
     fun logCurrentState(
         context: Context
     ) {
@@ -238,19 +368,48 @@ object DeviceOwnerProvisioningManager {
 
             val manager = dpm(context)
 
+            val deviceOwner =
+                manager.isDeviceOwnerApp(
+                    context.packageName
+                )
+
+            val profileOwner =
+                manager.isProfileOwnerApp(
+                    context.packageName
+                )
+
+            val deviceAdmin =
+                try {
+                    manager.isAdminActive(
+                        adminComponent(context)
+                    )
+                } catch (_: Throwable) {
+                    false
+                }
+
+            val provisioningAllowed =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    false
+                } else {
+                    try {
+                        manager.isProvisioningAllowed(
+                            DevicePolicyManager
+                                .ACTION_PROVISION_MANAGED_DEVICE
+                        )
+                    } catch (_: Throwable) {
+                        false
+                    }
+                }
+
             Log.d(
                 TAG,
                 "DevicePolicy state: " +
                     "package=${context.packageName} " +
-                    "deviceOwner=" +
-                    manager.isDeviceOwnerApp(
-                        context.packageName
-                    ) +
-                    " profileOwner=" +
-                    manager.isProfileOwnerApp(
-                        context.packageName
-                    ) +
-                    " sdk=${Build.VERSION.SDK_INT}"
+                    "deviceAdmin=$deviceAdmin " +
+                    "deviceOwner=$deviceOwner " +
+                    "profileOwner=$profileOwner " +
+                    "sdk=${Build.VERSION.SDK_INT} " +
+                    "legacyProvisioningAllowed=$provisioningAllowed"
             )
 
         } catch (t: Throwable) {
@@ -263,6 +422,15 @@ object DeviceOwnerProvisioningManager {
         }
     }
 
+    /**
+     * Suspends a package at the Android OS policy layer.
+     *
+     * This is the actual Enhanced Protection primitive.
+     *
+     * When AppLock is Device Owner, Android can prevent the protected
+     * package from being started instead of relying only on the
+     * Accessibility foreground-app detection.
+     */
     fun suspendPackage(
         context: Context,
         packageName: String
@@ -272,18 +440,25 @@ object DeviceOwnerProvisioningManager {
             return false
         }
 
-        if (!isPolicyOwner(context)) {
+        /*
+         * Enhanced Protection requires Device Owner.
+         *
+         * Do not silently accept only Device Admin here.
+         */
+        if (!isDeviceOwner(context)) {
+
             Log.w(
                 TAG,
-                "suspendPackage rejected: no policy-owner authority " +
-                    "pkg=$packageName"
+                "suspendPackage rejected: AppLock is not " +
+                    "Device Owner; pkg=$packageName"
             )
+
             return false
         }
 
         return try {
 
-            val failed =
+            val failedPackages =
                 dpm(context).setPackagesSuspended(
                     adminComponent(context),
                     arrayOf(packageName),
@@ -291,13 +466,15 @@ object DeviceOwnerProvisioningManager {
                 )
 
             val success =
-                !failed.contains(packageName)
+                !failedPackages.contains(
+                    packageName
+                )
 
             Log.d(
                 TAG,
                 "suspendPackage pkg=$packageName " +
                     "success=$success " +
-                    "failed=${failed.joinToString()}"
+                    "failed=${failedPackages.joinToString()}"
             )
 
             success
@@ -314,6 +491,9 @@ object DeviceOwnerProvisioningManager {
         }
     }
 
+    /**
+     * Removes OS-level package suspension.
+     */
     fun unsuspendPackage(
         context: Context,
         packageName: String
@@ -323,18 +503,20 @@ object DeviceOwnerProvisioningManager {
             return false
         }
 
-        if (!isPolicyOwner(context)) {
+        if (!isDeviceOwner(context)) {
+
             Log.w(
                 TAG,
-                "unsuspendPackage rejected: no policy-owner authority " +
-                    "pkg=$packageName"
+                "unsuspendPackage rejected: AppLock is not " +
+                    "Device Owner; pkg=$packageName"
             )
+
             return false
         }
 
         return try {
 
-            val failed =
+            val failedPackages =
                 dpm(context).setPackagesSuspended(
                     adminComponent(context),
                     arrayOf(packageName),
@@ -342,13 +524,15 @@ object DeviceOwnerProvisioningManager {
                 )
 
             val success =
-                !failed.contains(packageName)
+                !failedPackages.contains(
+                    packageName
+                )
 
             Log.d(
                 TAG,
                 "unsuspendPackage pkg=$packageName " +
                     "success=$success " +
-                    "failed=${failed.joinToString()}"
+                    "failed=${failedPackages.joinToString()}"
             )
 
             success
@@ -365,6 +549,10 @@ object DeviceOwnerProvisioningManager {
         }
     }
 
+    /**
+     * Returns whether Android currently reports the package as
+     * suspended.
+     */
     fun isPackageSuspended(
         context: Context,
         packageName: String
@@ -387,12 +575,15 @@ object DeviceOwnerProvisioningManager {
         }
     }
 
+    /**
+     * Ensures the package is suspended.
+     */
     fun enforceSuspended(
         context: Context,
         packageName: String
     ): Boolean {
 
-        if (!isPolicyOwner(context)) {
+        if (!isDeviceOwner(context)) {
             return false
         }
 
