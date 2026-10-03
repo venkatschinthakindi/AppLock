@@ -1445,36 +1445,7 @@ private fun finalizeUserLeft(
             provisionalDepartureRunnable
         )
     }
-val active = pending
 
-if (active != null) {
-    val dismissedAt =
-        active.lockUiDismissedAtElapsed
-
-    if (dismissedAt > 0L) {
-        val elapsed =
-            SystemClock.elapsedRealtime() - dismissedAt
-
-        if (elapsed < LOCK_UI_DISMISSAL_GRACE_MS) {
-            android.util.Log.d(
-                "AppLockDiag",
-                "provisional departure HOLD: " +
-                    "LockActivity dismissal grace active " +
-                    "owner=${active.packageName} " +
-                    "requestId=${active.requestId} " +
-                    "elapsed=${elapsed}ms"
-            )
-
-            mainHandler.postDelayed(
-                provisionalDepartureRunnable,
-                LOCK_UI_DISMISSAL_GRACE_MS - elapsed
-            )
-
-            armWatchdog()
-            return
-        }
-    }
-}
     private fun finalizeProvisionalDeparture() {
         val owner =
             provisionalDeparturePackage

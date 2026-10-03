@@ -42,6 +42,54 @@ object ProtectionPolicy {
         deviceOwnerActive = isDeviceOwner(context)
     )
 
+    fun logCurrentProtectionState(context: Context) {
+    val dpm =
+        context.getSystemService(
+            DevicePolicyManager::class.java
+        )
+
+    val adminComponent =
+        deviceAdminComponent(context)
+
+    val deviceAdminActive =
+        try {
+            dpm.isAdminActive(adminComponent)
+        } catch (t: Throwable) {
+            false
+        }
+
+    val deviceOwnerActive =
+        try {
+            dpm.isDeviceOwnerApp(
+                context.packageName
+            )
+        } catch (t: Throwable) {
+            false
+        }
+
+    val profileOwnerActive =
+        try {
+            dpm.isProfileOwnerApp(
+                context.packageName
+            )
+        } catch (t: Throwable) {
+            false
+        }
+
+    android.util.Log.d(
+        "AppLockDiag",
+        """
+        ===== CURRENT PROTECTION STATE =====
+        package=${context.packageName}
+        selectedMode=${ProtectionModeState.get(context)}
+        deviceAdminActive=$deviceAdminActive
+        deviceOwnerActive=$deviceOwnerActive
+        profileOwnerActive=$profileOwnerActive
+        ====================================
+        """.trimIndent()
+    )
+}
+
     fun selectStandard(context: Context) {
         EnhancedProtectionManager.disable(context)
         ProtectionModeState.set(context, ProtectionModeState.Mode.STANDARD)

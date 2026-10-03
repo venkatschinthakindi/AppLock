@@ -340,8 +340,9 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onResume() {
+        
         super.onResume()
-
+        ProtectionPolicy.logCurrentProtectionState(this)
         val app =
             application as AppLockApplication
 

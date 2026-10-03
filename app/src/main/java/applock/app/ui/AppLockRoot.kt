@@ -357,66 +357,115 @@ fun AppLockRoot(
      * only uses the legacy direct provisioning action on Android versions
      * where that action is still supported by the platform.
      */
+    
     val enhancedProvisioningLauncher =
-        rememberLauncherForActivityResult(
-            contract =
-                ActivityResultContracts
-                    .StartActivityForResult()
-        ) {
+    rememberLauncherForActivityResult(
+        contract =
+            ActivityResultContracts
+                .StartActivityForResult()
+    ) {
 
-            /*
-             * The result is only a signal to re-read the actual OS state.
-             * Never assume Device Owner was established merely because the
-             * provisioning activity returned RESULT_OK.
-             */
-            if (
-                ProtectionPolicy.selectEnhancedIfAvailable(
-                    context
-                )
-            ) {
-                firstRunStep = FIRST_RUN_DONE
-                showProtectionAdminDisclosure = false
-            }
-        }
-
-    fun beginEnhancedProtection(): Boolean {
-
+        /*
+         * Never trust RESULT_OK by itself.
+         *
+         * Device Owner state is the source of truth.
+         */
         if (
             ProtectionPolicy.selectEnhancedIfAvailable(
                 context
             )
         ) {
+
+            firstRunStep =
+                FIRST_RUN_DONE
+
+            showProtectionAdminDisclosure =
+                false
+        }
+    }
+
+    fun beginEnhancedProtection(): Boolean {
+
+        /*
+        * If Device Owner already exists, Enhanced Protection can
+        * immediately become active.
+        */
+        if (
+            ProtectionPolicy.selectEnhancedIfAvailable(
+                context
+            )
+        ) {
+            firstRunStep = FIRST_RUN_DONE
+            showProtectionAdminDisclosure = false
             return true
         }
 
-        val activity = context.findActivity()
-            ?: return false
+        val activity =
+            context.findActivity()
+                ?: return false
 
+        /*
+        * Android 11 and below:
+        *
+        * startDeviceOwnerProvisioning() itself starts the legacy
+        * provisioning activity.
+        *
+        * DO NOT call enhancedProvisioningLauncher.launch() after
+        * STARTED. That was the double-launch bug in the current code.
+        */
         when (
             DeviceOwnerProvisioningManager
                 .startDeviceOwnerProvisioning(activity)
         ) {
+
             DeviceOwnerProvisioningManager
                 .ProvisioningStartResult.ALREADY_DEVICE_OWNER -> {
 
-                return ProtectionPolicy
-                    .selectEnhancedIfAvailable(context)
+                val enabled =
+                    ProtectionPolicy
+                        .selectEnhancedIfAvailable(
+                            context
+                        )
+
+                if (enabled) {
+                    firstRunStep = FIRST_RUN_DONE
+                    showProtectionAdminDisclosure = false
+                }
+
+                return enabled
             }
 
             DeviceOwnerProvisioningManager
                 .ProvisioningStartResult.STARTED -> {
 
-                enhancedProvisioningLauncher.launch(
-                    DeviceOwnerProvisioningManager
-                        .createLegacyProvisioningIntent(context)
-                )
+                /*
+                * The provisioning UI has now been started by the manager.
+                *
+                * The ActivityResult callback below is only useful for the
+                * legacy pre-Android-12 provisioning flow.
+                */
                 return true
             }
 
             DeviceOwnerProvisioningManager
-                .ProvisioningStartResult.NOT_ALLOWED,
+                .ProvisioningStartResult.NOT_SUPPORTED_ON_THIS_DEVICE -> {
+
+                /*
+                * Android 12+:
+                *
+                * Do not attempt ACTION_PROVISION_MANAGED_DEVICE here.
+                *
+                * Device Owner must be established through Android's
+                * managed provisioning mechanism.
+                *
+                * Leave Enhanced Protection unselected.
+                */
+                return false
+            }
+
             DeviceOwnerProvisioningManager
-                .ProvisioningStartResult.NOT_SUPPORTED_ON_THIS_DEVICE,
+                .ProvisioningStartResult.NOT_ALLOWED,
+
             DeviceOwnerProvisioningManager
                 .ProvisioningStartResult.FAILED -> {
 

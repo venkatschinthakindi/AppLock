@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    <!--
-        Special permission: not requestable via a runtime dialog. The user
-        grants it at Settings > Apps > Special access > Usage access. It backs
-        UsageStatsForegroundSource, a foreground-app signal independent of the
-        accessibility window API, and is optional its absence only means
-        that corroborating signal has no opinion; core enforcement still runs
-        on the accessibility service without it.
-    -->
+
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
@@ -29,40 +26,40 @@
         android:theme="@style/Theme.AppLock"
         android:usesCleartextTraffic="false">
 
-<activity
-    android:name=".security.ProvisioningModeActivity"
-    android:exported="true"
-    android:theme="@style/Theme.AppLock">
+        <!-- Android 12+ managed provisioning callback. -->
+        <activity
+            android:name=".security.ProvisioningModeActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppLock">
 
-    <intent-filter>
-        <action
-            android:name="android.app.action.GET_PROVISIONING_MODE" />
+            <intent-filter>
+                <action
+                    android:name="android.app.action.GET_PROVISIONING_MODE" />
 
-        <category
-            android:name="android.intent.category.DEFAULT" />
-    </intent-filter>
+                <category
+                    android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 
-</activity>
+        </activity>
 
-<activity
-    android:name=".security.PolicyComplianceActivity"
-    android:exported="true"
-    android:theme="@style/Theme.AppLock">
+        <!-- Android 12+ managed provisioning callback. -->
+        <activity
+            android:name=".security.PolicyComplianceActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppLock">
 
-    <intent-filter>
-        <action
-            android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
+            <intent-filter>
+                <action
+                    android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
 
-        <category
-            android:name="android.intent.category.DEFAULT" />
-    </intent-filter>
+                <category
+                    android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 
-</activity>
+        </activity>
 
         <!--
             Security UI runs in a separate task from the normal AppLock task.
-            This is critical: tapping the AppLock launcher icon must always
-            open MainActivity, never resume a stale Chrome/other-app LockActivity.
         -->
         <activity
             android:name=".ui.lock.LockActivity"
@@ -91,59 +88,42 @@
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+
+                <category
+                    android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
-<activity
-    android:name=".security.ProvisioningModeActivity"
-    android:exported="true"
-    android:theme="@style/Theme.AppLock">
 
-    <intent-filter>
-        <action
-            android:name="android.app.action.GET_PROVISIONING_MODE" />
-
-        <category
-            android:name="android.intent.category.DEFAULT" />
-    </intent-filter>
-
-</activity>
-
-<activity
-    android:name=".security.PolicyComplianceActivity"
-    android:exported="true"
-    android:theme="@style/Theme.AppLock">
-
-    <intent-filter>
-        <action
-            android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
-
-        <category
-            android:name="android.intent.category.DEFAULT" />
-    </intent-filter>
-
-</activity>
         <service
             android:name=".service.AppDetectionAccessibilityService"
             android:exported="false"
             android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+
             <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
+                <action
+                    android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
+
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+
         </service>
 
         <receiver
             android:name=".boot.BootReceiver"
             android:exported="true">
+
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action
+                    android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+
         </receiver>
 
         <receiver
@@ -152,16 +132,22 @@
             android:exported="true"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
+
             <meta-data
                 android:name="android.app.device_admin"
                 android:resource="@xml/app_lock_device_admin" />
+
             <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action
+                    android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
+
         </receiver>
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-1267608571294570~2771837214" />
+
     </application>
+
 </manifest>
