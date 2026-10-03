@@ -57,6 +57,7 @@ import applock.app.AppLockApplication
 import applock.app.ads.AdsConsentManager
 import applock.app.ads.BannerAd
 import applock.app.security.AppLockDeviceAdminReceiver
+import applock.app.security.DeviceOwnerProvisioningManager
 import applock.app.security.ProtectionPolicy
 import applock.app.ui.components.AppDrawer
 import applock.app.ui.screens.AboutScreen
@@ -168,6 +169,9 @@ fun AppLockRoot(
      * showing the Device Admin explanation before Android's confirmation UI.
      *
      * This is separate from the first-run Device Admin flow above.
+     *
+     * NOTE: This state remains for the existing Standard/Device Admin flow.
+     * Enhanced Protection no longer uses it.
      */
     var showProtectionAdminDisclosure by remember {
         mutableStateOf(false)
@@ -339,82 +343,87 @@ fun AppLockRoot(
 
     /*
      * ------------------------------------------------------------------
-     * ENHANCED PROTECTION — DEVICE ADMIN LAUNCHER
+     * ENHANCED PROTECTION — DEVICE OWNER PROVISIONING
      * ------------------------------------------------------------------
      *
-     * Distinct from `deviceAdminLauncher` above, which drives the
-     * STEP 2 first-run decision. This launcher is used only when the
-     * user selects Enhanced Protection on the Protection Mode screen
-     * (first-run or, later, Settings) while Device Admin is not yet
-     * active.
+     * Enhanced Protection is an OS-boundary mode. Device Admin is NOT
+     * sufficient authority for it. The existing Device Admin flow above
+     * remains untouched for Standard Protection and the first-run
+     * tamper-protection decision.
      *
-     * Invariant: ENHANCED must never be persisted unless Device
-     * Admin is actually active. If the user cancels Android's
-     * confirmation screen, deviceAdminActive stays false and we
-     * simply remain wherever we were — nothing is saved.
+     * Android 12+ requires managed-device provisioning callbacks rather
+     * than starting the deprecated ACTION_PROVISION_MANAGED_DEVICE flow
+     * from an ordinary already-provisioned app. Therefore this launcher
+     * only uses the legacy direct provisioning action on Android versions
+     * where that action is still supported by the platform.
      */
-    val enhancedDeviceAdminLauncher =
+    val enhancedProvisioningLauncher =
         rememberLauncherForActivityResult(
             contract =
                 ActivityResultContracts
                     .StartActivityForResult()
         ) {
 
-            deviceAdminActive =
-                devicePolicyManager.isAdminActive(
-                    deviceAdminComponent
-                )
-
-            if (deviceAdminActive) {
-
-                FirstRunSetupState
-                    .markDeviceAdminDecisionComplete(
-                        context
-                    )
-
-                ProtectionModeState.set(
-                    context,
-                    ProtectionModeState.Mode.ENHANCED
-                )
-
-                firstRunStep =
-                    FIRST_RUN_DONE
-            }
-        }
-
-    /*
-     * ------------------------------------------------------------------
-     * NORMAL PROTECTION LEVEL — DEVICE ADMIN LAUNCHER
-     * ------------------------------------------------------------------
-     *
-     * Used when the user changes Protection Level after first-run.
-     *
-     * IMPORTANT:
-     * Enhanced Protection is persisted only after Android confirms
-     * Device Admin is actually active.
-     *
-     * If the user cancels the Android confirmation screen, the current
-     * protection mode remains unchanged.
-     */
-    val protectionModeDeviceAdminLauncher =
-        rememberLauncherForActivityResult(
-            contract =
-                ActivityResultContracts
-                    .StartActivityForResult()
-        ) {
-
-            deviceAdminActive =
-                devicePolicyManager.isAdminActive(
-                    deviceAdminComponent
-                )
-
+            /*
+             * The result is only a signal to re-read the actual OS state.
+             * Never assume Device Owner was established merely because the
+             * provisioning activity returned RESULT_OK.
+             */
             if (
-                ProtectionPolicy
-                    .selectEnhancedIfAvailable(context)
+                ProtectionPolicy.selectEnhancedIfAvailable(
+                    context
+                )
             ) {
+                firstRunStep = FIRST_RUN_DONE
                 showProtectionAdminDisclosure = false
             }
         }
+
+    fun beginEnhancedProtection(): Boolean {
+
+        if (
+            ProtectionPolicy.selectEnhancedIfAvailable(
+                context
+            )
+        ) {
+            return true
+        }
+
+        val activity = context.findActivity()
+            ?: return false
+
+        when (
+            DeviceOwnerProvisioningManager
+                .startDeviceOwnerProvisioning(activity)
+        ) {
+            DeviceOwnerProvisioningManager
+                .ProvisioningStartResult.ALREADY_DEVICE_OWNER -> {
+
+                return ProtectionPolicy
+                    .selectEnhancedIfAvailable(context)
+            }
+
+            DeviceOwnerProvisioningManager
+                .ProvisioningStartResult.STARTED -> {
+
+                enhancedProvisioningLauncher.launch(
+                    DeviceOwnerProvisioningManager
+                        .createLegacyProvisioningIntent(context)
+                )
+                return true
+            }
+
+            DeviceOwnerProvisioningManager
+                .ProvisioningStartResult.NOT_ALLOWED,
+            DeviceOwnerProvisioningManager
+                .ProvisioningStartResult.NOT_SUPPORTED_ON_THIS_DEVICE,
+            DeviceOwnerProvisioningManager
+                .ProvisioningStartResult.FAILED -> {
+
+                return false
+            }
+        }
+    }
 
     /*
      * ------------------------------------------------------------------
@@ -628,8 +637,9 @@ fun AppLockRoot(
              * STEP 5 — PROTECTION MODE
              * ==========================================================
              *
-             * The current ProtectionModeSelectionScreen API exposes
-             * separate callbacks for Standard and Enhanced.
+             * Standard remains the existing production path.
+             * Enhanced is now independent from Device Admin and requires
+             * actual Device Owner authority before it can be persisted.
              */
             FIRST_RUN_PROTECTION_MODE -> {
 
@@ -640,9 +650,8 @@ fun AppLockRoot(
 
                     onStandardSelected = {
 
-                        ProtectionModeState.set(
-                            context,
-                            ProtectionModeState.Mode.STANDARD
+                        ProtectionPolicy.selectStandard(
+                            context
                         )
 
                         firstRunStep =
@@ -651,47 +660,10 @@ fun AppLockRoot(
 
                     onEnhancedSelected = {
 
-                        /*
-                         * Do NOT persist ENHANCED before Android
-                         * confirms Device Admin. See
-                         * enhancedDeviceAdminLauncher above.
-                         */
-                        if (deviceAdminActive) {
-
-                            ProtectionModeState.set(
-                                context,
-                                ProtectionModeState.Mode.ENHANCED
-                            )
+                        if (beginEnhancedProtection()) {
 
                             firstRunStep =
                                 FIRST_RUN_DONE
-
-                        } else {
-
-                            val intent =
-                                Intent(
-                                    DevicePolicyManager
-                                        .ACTION_ADD_DEVICE_ADMIN
-                                ).apply {
-
-                                    putExtra(
-                                        DevicePolicyManager
-                                            .EXTRA_DEVICE_ADMIN,
-                                        deviceAdminComponent
-                                    )
-
-                                    putExtra(
-                                        DevicePolicyManager
-                                            .EXTRA_ADD_EXPLANATION,
-                                        "Enable AppLock device protection " +
-                                            "to strengthen tamper and " +
-                                            "uninstall protection."
-                                    )
-                                }
-
-                            enhancedDeviceAdminLauncher.launch(
-                                intent
-                            )
                         }
                     }
                 )
@@ -852,6 +824,14 @@ fun AppLockRoot(
 
                                     "protection_mode" -> {
 
+                                        /*
+                                         * Existing Device Admin disclosure is
+                                         * retained only for the existing
+                                         * Device Admin/Standard path.
+                                         *
+                                         * Enhanced never routes through this
+                                         * screen anymore.
+                                         */
                                         if (
                                             showProtectionAdminDisclosure
                                         ) {
@@ -874,11 +854,11 @@ fun AppLockRoot(
                                                             putExtra(
                                                                 DevicePolicyManager
                                                                     .EXTRA_ADD_EXPLANATION,
-                                                                "Enable AppLock device protection to strengthen the selected Enhanced Protection mode."
+                                                                "Enable AppLock device protection to strengthen the selected protection mode."
                                                             )
                                                         }
 
-                                                    protectionModeDeviceAdminLauncher
+                                                    deviceAdminLauncher
                                                         .launch(intent)
                                                 },
 
@@ -904,15 +884,14 @@ fun AppLockRoot(
 
                                                 onEnhancedSelected = {
 
-                                                    if (
-                                                        !ProtectionPolicy
-                                                            .selectEnhancedIfAvailable(
-                                                                context
-                                                            )
-                                                    ) {
-                                                        showProtectionAdminDisclosure =
-                                                            true
-                                                    }
+                                                    /*
+                                                     * Enhanced is NOT allowed
+                                                     * to fall back to Device
+                                                     * Admin. If Device Owner is
+                                                     * unavailable, leave the
+                                                     * current mode unchanged.
+                                                     */
+                                                    beginEnhancedProtection()
                                                 }
                                             )
                                         }
